@@ -1,0 +1,13 @@
+# Pinned from: python3.11 -m venv .venv && pip install google-adk crewai fastapi uvicorn pytest python-dotenv
+# Resolved on 2026-10-14 on macOS arm64 with Python 3.11.14
+# KEY NOTE: crewai==1.15.28 requires pydantic<2.13; google-adk==2.12.0 requires pydantic>=2.12,<3.
+# The intersection is pydantic==2.12.x — do NOT pin pydantic to >=2.13 or the environment breaks.
+# If crewai raises its upper bound in a future release, re-run the install and update this file.
+
+google-adk==2.12.0
+crewai==1.15.28
+pydantic==2.12.5
+fastapi==0.141.1
+uvicorn==0.34.0
+pytest==9.1.1
+python-dotenv==1.2.4
