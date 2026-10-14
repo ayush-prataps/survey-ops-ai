@@ -1,0 +1,9 @@
+# Direct dependencies. Edit THIS file, then regenerate requirements.txt.
+google-adk[a2a]
+crewai[a2a]
+# Do NOT pin pydantic>=2.13: crewai requires pydantic<2.13. Let pip resolve it.
+pydantic
+fastapi
+uvicorn
+pytest
+python-dotenv

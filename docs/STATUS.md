@@ -9,6 +9,7 @@ Last updated: 2026-10-14
 - Consistency check: docs/03-REQUIREMENTS.md vs 11 course requirements — see report below
 - Minimal env: .venv (Python 3.11.14) with google-adk==2.12.0 + crewai==1.15.28 coexisting; requirements.txt pinned
 - Spikes 5 and 6 resolved (see DECISIONS.md SPIKE RESULTS)
+- A2A Protocol SDK spike completed: `google-adk[a2a]` + `crewai[a2a]` coexisting with `a2a-sdk==0.3.26`; throwaway end-to-end spike in `scripts/spikes/a2a_hello_world.py` verified (ADK RemoteA2aAgent calling CrewAI over A2A)
 - Repo hygiene: folder structure matches AGENTS.md, .gitignore covers .env/.venv/__pycache__, .env.example has no real secrets
 - Smoke test: tests/test_smoke.py — 3/3 passed
 
@@ -19,9 +20,9 @@ Last updated: 2026-10-14
 - None
 
 ## Next 3
-1. Target app skeleton (3 to 4 FastAPI services) with `/metrics`, Docker Compose, Toxiproxy with one fault
+1. Target app skeleton (3 to 4 FastAPI services: orders, payment, inventory, auth) with `/metrics`, Docker Compose, Toxiproxy with one fault
 2. Pydantic schemas in `surveyops/schemas/` matching 04-CONTRACTS.md
-3. Verify Remediator A2A integration path (crewai.a2a config/types without the `a2a` SDK) — see DECISIONS.md item 5
+3. First real agent implementation (Surface Mapper or Runner)
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

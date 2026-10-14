@@ -39,3 +39,28 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - `LlmAgent` has `output_schema: Optional[SchemaType] = None` and `tools` as separate fields.
 - Source docstring (line 468–471 of llm_agent.py): *"The ADK supports using `output_schema` and `tools` together. It works by exposing tools during the thought loop and enforcing structure only on the final output."*
 - **Decision:** `output_schema` does NOT disable tool use in ADK 2.12.0. The Diagnostician can use `output_schema=DiagnosisResult` alongside MCP tools without losing tool-calling capability. No workaround needed.
+
+**11 – A2A Protocol SDK Cross-Framework Spike: ADK -> CrewAI (RESOLVED)**
+- **Dependency check & Extras:**
+  - `google-adk[a2a]` requires `a2a-sdk[http-server]>=0.3.4,<2`.
+  - `crewai[a2a]` requires `a2a-sdk~=0.3.10` (`>=0.3.10, <0.4`).
+  - Both cleanly resolve together to `a2a-sdk==0.3.26` with zero conflicts against `google-adk==2.12.0` and `crewai==1.15.28`.
+  - Installing `google-adk[a2a]==2.12.0` and `crewai[a2a]==1.15.28` adds `a2a-sdk==0.3.26`, `aiocache==0.12.3`, `aiomcache==0.8.2`, `google-api-core==2.34.0`, `httpx-auth==0.23.1`, `proto-plus==1.29.0`, and `redis==8.1.0`.
+  - `a2a-sdk` is the common protocol specification library implementing Agent2Agent (A2A), not a separate agent orchestration framework.
+- **Throwaway spike built & verified:** `scripts/spikes/a2a_hello_world.py`
+  - CrewAI Remediator Agent served via `A2AFastAPIApplication` (`a2a.server.apps.jsonrpc.fastapi_app`) with `DefaultRequestHandler` and `AgentExecutor` wrapping `crewai.a2a.utils.task.execute`.
+  - Google ADK Diagnostician caller connects via `RemoteA2aAgent(name="crewai_remediator", agent_card="http://127.0.0.1:8199")` driven by `InMemoryRunner`.
+- **Endpoints used:**
+  - Agent Discovery: `GET /.well-known/agent-card.json` (and fallback `GET /.well-known/agent.json`)
+  - Agent Execution: `POST /` (JSON-RPC)
+  - Schema documentation: `GET /docs`, `GET /openapi.json`
+- **What worked:**
+  - ADK's `RemoteA2aAgent` fetched and validated the `AgentCard` at discovery time.
+  - ADK sent the user diagnostic payload in an A2A task message to `POST /`.
+  - CrewAI Remediator processed the task and emitted the response event back over the A2A event stream.
+  - ADK received and displayed the patched code response cleanly (`Hello from CrewAI Remediator over A2A!`).
+- **What failed initially & remedies applied:**
+  - `InMemoryRunner.session_service.create_session`: Passing an arbitrary `app_name` caused `SessionNotFoundError` during `runner.run_async()`. Remedy: must supply `app_name=runner.app_name` (defaulting to `'InMemoryRunner'`).
+  - CrewAI interactive trace prompt: CrewAI prompted to share traces via `[y/N]` stdin with a 20s timeout. Remedy: set environment variables `CREWAI_TRACING_ENABLED=false` and `CREWAI_TESTING=true`.
+  - BaseLLM abstract requirements: CrewAI `BaseLLM` subclasses must declare a `model: str` attribute and implement both `call` and `acall`.
+- **Decision:** Use official `a2a-sdk==0.3.26` via framework extras for the Diagnostician -> Remediator link. This satisfies Requirement 4 & Requirement 6 directly without custom HTTP shims.
