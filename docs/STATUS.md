@@ -10,6 +10,7 @@ Last updated: 2026-10-14
 - Minimal env: .venv (Python 3.11.14) with google-adk==2.12.0 + crewai==1.15.28 coexisting; requirements.txt pinned
 - Spikes 5 and 6 resolved (see DECISIONS.md SPIKE RESULTS)
 - A2A Protocol SDK spike completed: `google-adk[a2a]` + `crewai[a2a]` coexisting with `a2a-sdk==0.3.26`; throwaway end-to-end spike in `scripts/spikes/a2a_hello_world.py` verified (ADK RemoteA2aAgent calling CrewAI over A2A)
+- Structured Pydantic payload spike completed in `scripts/spikes/a2a_structured_pydantic_spike.py`: roundtrip DiagnosisResult/RemediationResult, TextPart vs DataPart, CrewAI output_pydantic, negative guardrails tests, state isolation, and callback checks verified
 - Repo hygiene: folder structure matches AGENTS.md, .gitignore covers .env/.venv/__pycache__, .env.example has no real secrets
 - Smoke test: tests/test_smoke.py — 3/3 passed
 

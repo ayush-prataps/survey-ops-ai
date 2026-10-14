@@ -115,3 +115,11 @@ Surface Mapper tools (graph builder, spec parser) are plain code tools, wrapped 
 
 ## /investigate
 `POST /investigate`, header `X-Shared-Secret`, body `InvestigatePayload`. Creates an incident record, starts the Diagnostician. Lives on the SurveyOps backend, not the target app.
+
+## A2A transport rules (from spike 2, 2026-10-14)
+- Payloads travel as `TextPart(model_dump_json())`, not `DataPart`. Applies to every A2A link.
+- Every receiver validates with Pydantic. On `ValidationError` it returns a failed task status (via `new_agent_text_message`), never crashes.
+- Every sender catches `ValidationError` on the reply and treats it as a failed experiment or failed remediation.
+- Session state does not cross A2A. The message must carry everything the receiver needs.
+- Deterministic code builds and sends the payload. An LLM must never retype the JSON.
+- Encode/decode lives in one helper module (`surveyops/a2a_utils.py`).

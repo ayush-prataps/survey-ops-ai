@@ -64,3 +64,11 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
   - CrewAI interactive trace prompt: CrewAI prompted to share traces via `[y/N]` stdin with a 20s timeout. Remedy: set environment variables `CREWAI_TRACING_ENABLED=false` and `CREWAI_TESTING=true`.
   - BaseLLM abstract requirements: CrewAI `BaseLLM` subclasses must declare a `model: str` attribute and implement both `call` and `acall`.
 - **Decision:** Use official `a2a-sdk==0.3.26` via framework extras for the Diagnostician -> Remediator link. This satisfies Requirement 4 & Requirement 6 directly without custom HTTP shims.
+
+**12 – Structured Pydantic Payloads across A2A Hop (RESOLVED)**
+- **Part types:** Both work. `TextPart` with JSON string (`model_dump_json()`) is native in ADK and directly deserializable with `model_validate_json()`. `DataPart` works when using ADK's `context_builder` (CrewAI receives it via `get_data_parts()`). Recommendation: use `TextPart(json)` to avoid binary blob wrapping in Gemini parts.
+- **CrewAI `output_pydantic`:** Works cleanly on `Task(output_pydantic=RemediationResult)`. `crew_output.pydantic` yields a fully validated Pydantic model instance when the stub LLM returns matching JSON.
+- **Negative test (malformed input):** CrewAI rejected invalid `DiagnosisResult` with Pydantic `ValidationError`. Server caught it, returned a failed task status, and remained healthy without crashing.
+- **Negative test (malformed output):** ADK side caught Pydantic `ValidationError` when the stub returned invalid JSON.
+- **State isolation:** ADK session state is completely isolated across the A2A wire (server received 0 leaked keys). Everything Remediator needs must be passed explicitly in the message.
+- **Callbacks:** ADK `before_agent_callback` and `after_agent_callback` fire around `RemoteA2aAgent`, observing input and output content parts.
