@@ -5,9 +5,12 @@ networks:
     driver: bridge
   data_net:
     driver: bridge
+  ops_net:
+    driver: bridge
 
 volumes:
   target_postgres_data:
+  surveyops_postgres_data:
   grafana_data:
 
 services:
@@ -249,6 +252,7 @@ services:
       - "8000:8000"
     networks:
       - target_net
+      - ops_net
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
       interval: 5s
@@ -299,4 +303,27 @@ services:
       - orders
       - payment
       - docker-log-proxy
+
+  # ── SurveyOps Internal Postgres (pgvector enabled) ──────────────────────────
+  # ISOLATION: On ops_net ONLY. Target application containers do not join ops_net.
+  surveyops-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: surveyops_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SURVEYOPS_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${SURVEYOPS_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${SURVEYOPS_POSTGRES_DB:-surveyops}
+    volumes:
+      - ./postgres_surveyops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - surveyops_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - ops_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d surveyops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 

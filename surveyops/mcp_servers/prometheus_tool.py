@@ -29,6 +29,33 @@ QUERY_TEMPLATES = {
 }
 
 
+def _query_instant(promql: str) -> list[dict[str, Any]]:
+    """Helper to execute an instant PromQL query against Prometheus."""
+    params = urllib.parse.urlencode({"query": promql})
+    url = f"{PROMETHEUS_URL}/api/v1/query?{params}"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        if data.get("status") == "success" and "data" in data:
+            return data["data"].get("result", [])
+    except Exception:
+        pass
+    return []
+
+
+def _extract_scalar_value(result_list: list[dict[str, Any]]) -> float | None:
+    """Extracts scalar float from Prometheus result vector if present."""
+    if result_list and isinstance(result_list, list) and len(result_list) > 0:
+        val = result_list[0].get("value")
+        if val and len(val) >= 2:
+            try:
+                return float(val[1])
+            except (ValueError, TypeError):
+                pass
+    return None
+
+
 def execute_prometheus_query(
     template: str,
     service: str | None = None,
@@ -38,6 +65,8 @@ def execute_prometheus_query(
     """
     Executes a vetted named query template against Prometheus.
     Arbitrary PromQL is strictly rejected.
+    When querying 'p99_latency', automatically bundles request rate, sample count,
+    and DB pool metrics so latency cannot be misinterpreted when few samples finished.
     """
     if template not in QUERY_TEMPLATES:
         raise ValueError(
@@ -67,20 +96,32 @@ def execute_prometheus_query(
 
     query_str = query_str.replace("__RANGE__", str(range_s))
 
-    # Execute HTTP GET to Prometheus
-    params = urllib.parse.urlencode({"query": query_str})
-    url = f"{PROMETHEUS_URL}/api/v1/query?{params}"
+    # Execute primary HTTP GET to Prometheus
+    results = _query_instant(query_str)
 
-    try:
-        req = urllib.request.Request(url, method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-    except Exception as exc:
-        raise RuntimeError(f"Prometheus query failed for template '{template}': {exc}")
+    req_rate: float | None = None
+    req_count: float | None = None
+    pool_in_use: float | None = None
+    pool_capacity: float | None = None
 
-    results = []
-    if data.get("status") == "success" and "data" in data:
-        results = data["data"].get("result", [])
+    # When querying p99_latency, bundle request rate/count and DB pool gauges
+    if template == "p99_latency":
+        # 1. Request rate & request count
+        selector = f'handler="{endpoint}"' if endpoint else ""
+        selector_comma = f'handler="{endpoint}",' if endpoint else ""
+        rate_q = f"sum by (handler) (rate(http_requests_total{{{selector}}}[{range_s}s]))"
+        inc_q = f"sum by (handler) (increase(http_requests_total{{{selector}}}[{range_s}s]))"
+
+        rate_res = _query_instant(rate_q)
+        inc_res = _query_instant(inc_q)
+        req_rate = _extract_scalar_value(rate_res)
+        req_count = _extract_scalar_value(inc_res)
+
+        # 2. Pool gauges (immediate indicators of exhaustion before requests timeout)
+        in_use_res = _query_instant("payment_db_pool_in_use_connections")
+        cap_res = _query_instant("payment_db_pool_capacity")
+        pool_in_use = _extract_scalar_value(in_use_res)
+        pool_capacity = _extract_scalar_value(cap_res)
 
     return PrometheusQueryReturn(
         template=template,
@@ -89,5 +130,9 @@ def execute_prometheus_query(
         range_s=range_s,
         promql=query_str,
         results=results,
+        request_rate=req_rate,
+        request_count=req_count,
+        pool_in_use=pool_in_use,
+        pool_capacity=pool_capacity,
         status="success",
     )

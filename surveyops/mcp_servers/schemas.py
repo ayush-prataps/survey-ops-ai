@@ -9,6 +9,10 @@ class PrometheusQueryReturn(BaseModel):
     range_s: int
     promql: str
     results: list[dict[str, Any]] = Field(default_factory=list)
+    request_rate: float | None = None
+    request_count: float | None = None
+    pool_in_use: float | None = None
+    pool_capacity: float | None = None
     status: str = "success"
 
 

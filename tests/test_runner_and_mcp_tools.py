@@ -91,6 +91,11 @@ class TestPrometheusQueryTool:
         assert res.status == "success"
         assert len(res.results) == 1
         assert res.results[0]["value"][1] == "1.45"
+        # Verify bundled metric telemetry
+        assert res.request_rate == 1.45
+        assert res.request_count == 1.45
+        assert res.pool_in_use == 1.45
+        assert res.pool_capacity == 1.45
 
     @mock.patch("urllib.request.urlopen")
     def test_valid_query_pool_in_use(self, mock_urlopen):

@@ -45,6 +45,17 @@ Last updated: 2026-10-17
   - Standalone verification script `scripts/test_runner_a2a.py` testing live query_metrics, fetch_logs, load_burst, and 5 negative test cases against live container.
   - Live fault testing verified: injected latency fault -> payment load burst showed 3s latency and 500 errors -> payment logs captured `sqlalchemy.exc.TimeoutError: QueuePool limit...` safely wrapped with untrusted text flag.
   - Test suite expanded to 69 tests (`pytest tests/ -v` all passing; 25 runner/MCP tests, 15 investigate tests, 17 schema/a2a tests, 9 target app tests, 3 smoke tests).
+- Step 5 completed (Surface Mapper & Storage):
+  - Deterministic AST graph builder (`surveyops/agents/surface_mapper/tools/graph_builder.py`): discovers 31 nodes (endpoints, DB sessions, connection pools, internal functions) and 26 edges, including cross-service HTTP calls (`orders -> payment`, `orders -> auth`, `orders -> inventory`).
+  - OpenAPI spec parser (`surveyops/agents/surface_mapper/tools/spec_parser.py`): parses all 4 services, extracts 16 endpoints with parameters and response status codes.
+  - CrewAI Surface Mapper agent (`surveyops/agents/surface_mapper/agent.py`): uses `gemini-3.8-flash`, outputs unranked `Proposition` objects matching `PropositionList` via `output_pydantic`.
+  - Deterministic guardrail (`surveyops/agents/surface_mapper/guardrails.py`): validates every proposition against OpenAPI endpoints, AST dependency edges, and `FailureMode` enum. Drops any hallucinated endpoints or invented edges.
+  - Local disk cache (`propositions_cache.json`): ensures repeat runs and tests do not re-consume LLM quota.
+  - SurveyOps internal PostgreSQL (`surveyops_postgres`, image `pgvector/pgvector:pg16`): added to `infra/docker-compose.yml` on isolated `ops_net` (not joined by target apps) with `propositions` table and `vector` extension.
+  - Storage module (`surveyops/agents/surface_mapper/storage.py`): provides upsert and loading of propositions from PostgreSQL.
+  - Structured callbacks (`surveyops/agents/surface_mapper/callbacks.py`): logs task execution, summary, and latency as structured JSON.
+  - Mapper recall evaluation: achieves 100% recall (5/5) against planned faults from `docs/07-EVALUATION.md` (connection pool exhaustion, retry storm without backoff, missing DB index / N+1, race condition in idempotency, pagination off by one).
+  - Test suite expanded to 88 tests (`pytest tests/ -v` all passing: 8 tool unit tests, 7 mapper guardrail/storage/callback/recall tests).
 
 ## In progress
 - (Nothing currently blocked or in flight)
@@ -53,8 +64,8 @@ Last updated: 2026-10-17
 - None
 
 ## Next 3
-1. Surface Mapper implementation (CrewAI)
-2. Diagnostician LoopAgent implementation (ADK)
+1. Diagnostician LoopAgent implementation (ADK)
+2. Cross-framework A2A link (Diagnostician -> Remediator)
 3. Remediator implementation (CrewAI)
 
 ## Consistency check findings (2026-10-14)

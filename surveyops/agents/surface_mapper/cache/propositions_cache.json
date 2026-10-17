@@ -1,0 +1,80 @@
+{
+  "cache_key": "5d29c42b842ab11aabd11cc70afeb1e2f3ca7ce919881b5bcfa6644774e069ea",
+  "propositions": [
+    {
+      "proposition_id": "SM-001",
+      "endpoint": "POST /orders",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "Handler acquires database connection before executing synchronous outbound HTTP calls to auth, inventory, and payment, locking pool connections for the duration of external calls.",
+      "predicted_signal": "orders_db_pool_available_connections drops to zero and connection pool checkout timeouts spike during downstream latency.",
+      "graph_edge_ref": "orders.create_order() -> db.connection_pool"
+    },
+    {
+      "proposition_id": "SM-002",
+      "endpoint": "POST /orders",
+      "failure_mode": "retry_storm_no_backoff",
+      "justification": "Outbound HTTP charge request from order creation coordinates calls without backoff and jitter upon transient downstream failures or network timeouts.",
+      "predicted_signal": "Sudden multiplication of POST /payment/charge request traffic accompanied by payment service 504 and 503 error cascades.",
+      "graph_edge_ref": "orders.create_order() -> payment.charge()"
+    },
+    {
+      "proposition_id": "SM-003",
+      "endpoint": "POST /orders",
+      "failure_mode": "retry_storm_no_backoff",
+      "justification": "Order creation orchestrates synchronous inventory reservation without exponential backoff and jitter, magnifying inventory service overload upon initial timeout.",
+      "predicted_signal": "Inventory reserve request rate surges abruptly during transient stock reservation latency spikes.",
+      "graph_edge_ref": "orders.create_order() -> inventory.reserve()"
+    },
+    {
+      "proposition_id": "SM-004",
+      "endpoint": "GET /orders",
+      "failure_mode": "pagination_off_by_one",
+      "justification": "Offset and limit boundary calculations in list_orders do not enforce deterministic tie-breaking sort order, causing missed or duplicated items across adjacent pages.",
+      "predicted_signal": "Duplicate entity IDs returned across consecutive page responses or client-side reconciliation discrepancies.",
+      "graph_edge_ref": "orders.list_orders() -> db.session"
+    },
+    {
+      "proposition_id": "SM-005",
+      "endpoint": "GET /orders",
+      "failure_mode": "missing_index_n_plus_1",
+      "justification": "Order list query performs full collection iteration or separate entity lookups per returned order row without indexed eager loading.",
+      "predicted_signal": "Database query latency scales linearly with requested page limit size alongside elevated database CPU consumption.",
+      "graph_edge_ref": "orders.list_orders() -> db.session"
+    },
+    {
+      "proposition_id": "SM-006",
+      "endpoint": "POST /payment/charge",
+      "failure_mode": "race_condition_idempotency",
+      "justification": "Non-atomic idempotency verification executes separately from charge execution, allowing identical concurrent requests to pass the check simultaneously.",
+      "predicted_signal": "Duplicate charge entries recorded with matching idempotency keys in payment records.",
+      "graph_edge_ref": "payment.charge() -> payment.check_idempotency()"
+    },
+    {
+      "proposition_id": "SM-007",
+      "endpoint": "POST /payment/charge",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "Payment processing holds database connection pool resources across multiple database operations, starving incoming charge requests under sustained high throughput.",
+      "predicted_signal": "payment service connection pool saturation metric reaches 100% and connection acquisition wait times increase.",
+      "graph_edge_ref": "payment.charge_payment() -> db.connection_pool"
+    },
+    {
+      "proposition_id": "SM-008",
+      "endpoint": "POST /inventory/{item_id}/reserve",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "High concurrency stock reservation transactions exhaust connection pool allocations during row-level lock contention on hot inventory items.",
+      "predicted_signal": "inventory database pool wait queue duration spikes and HTTP 500 error responses occur due to pool acquisition timeouts.",
+      "graph_edge_ref": "inventory.reserve_stock() -> db.connection_pool"
+    }
+  ],
+  "dropped": [],
+  "token_usage": {
+    "total_tokens": 5811,
+    "prompt_tokens": 3485,
+    "completion_tokens": 2326
+  },
+  "metadata": {
+    "graph_nodes": 31,
+    "graph_edges": 28,
+    "cross_service_edges": 3
+  }
+}
