@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-14
+Last updated: 2026-10-17
 
 ## Done
 - Synopsis drafted (needs alignment with DECISIONS.md, do not keep rewriting it)
@@ -20,6 +20,15 @@ Last updated: 2026-10-14
   - Headless Locust load generator (`infra/loadgen/`) driving continuous synthetic traffic (~2.5 req/s)
   - Integration tests in `tests/test_target_app.py` (7/7 passed, 10/10 total passed)
 - Target app histogram buckets customized across all 4 services to `(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)` so p99 above 1s is visible on `/metrics`
+- Step 2 completed (Fault injection, detection, stub /investigate):
+  - Toxiproxy inserted in `infra/docker-compose.yml` between payment and Postgres (port 5433).
+  - Fault scripts built: `eval/faults/inject_latency.py` and `eval/faults/clear_faults.py`. Injections write ground-truth records to `eval/ground_truth/` (gitignored).
+  - Prometheus alert rules configured in `infra/prometheus/alert_rules.yml` (`HighP99Latency` and `HighErrorRate` over 1m window).
+  - Alertmanager in compose (`infra/alertmanager/alertmanager.yml`) with webhook receiver to `http://surveyops-api:8000/investigate`, `send_resolved: false`, authenticated via Bearer token.
+  - SurveyOps API stub in `surveyops/api/` with `POST /investigate` validating token, parsing Alertmanager webhooks to `InvestigatePayload` (symptom only), logging structured JSON, returning 200.
+  - Trial reset script in `scripts/reset_trial.sh` (clears toxics and truncates payments/orders tables).
+  - End-to-end verified: injected latency -> p99 jumped to >10s -> Prometheus alerts fired -> Alertmanager delivered webhook -> `/investigate` logged symptom payload. Clean reset verified.
+  - Unit tests: `tests/test_investigate_api.py` (10/10 passed; 20/20 total tests pass).
 - Repo hygiene: folder structure matches AGENTS.md, .gitignore covers .env/.venv/__pycache__, .env.example has no real secrets
 - Smoke test: tests/test_smoke.py — 3/3 passed
 
@@ -31,8 +40,8 @@ Last updated: 2026-10-14
 
 ## Next 3
 1. Pydantic schemas in `surveyops/schemas/` matching `docs/04-CONTRACTS.md`
-2. Toxiproxy insertion in compose with one injected fault & Alertmanager webhook to `/investigate`
-3. Surface Mapper implementation (CrewAI)
+2. Surface Mapper implementation (CrewAI)
+3. Experiment Runner implementation (ADK) + first MCP server
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

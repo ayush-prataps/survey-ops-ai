@@ -30,6 +30,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Toxiproxy (payment-postgres fault injection point) ─────────────────────
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    container_name: target_toxiproxy
+    restart: unless-stopped
+    command: ["-host", "0.0.0.0", "-config", "/etc/toxiproxy/toxiproxy-config.json"]
+    volumes:
+      - ./toxiproxy/toxiproxy-config.json:/etc/toxiproxy/toxiproxy-config.json:ro
+    ports:
+      - "8474:8474"   # Toxiproxy management API (exposed for fault scripts)
+      - "5433:5433"   # payment-postgres proxy port (internal use only)
+    networks:
+      - target_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No healthcheck: toxiproxy uses a scratch (no-shell) image.
+    # Payment uses condition: service_started, which is sufficient because
+    # Toxiproxy binds 5433 synchronously on startup before serving requests.
+
   auth:
     build:
       context: ../services/target_app/auth
@@ -78,9 +98,9 @@ services:
     container_name: target_payment
     restart: unless-stopped
     environment:
-      # Single env var for DB host to easily route through proxy in the future
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
+      # Routes through Toxiproxy so faults can be injected without app code changes
+      POSTGRES_HOST: toxiproxy
+      POSTGRES_PORT: "5433"
       POSTGRES_DB: target_app
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -90,8 +110,8 @@ services:
     ports:
       - "8002:8002"
     depends_on:
-      postgres:
-        condition: service_healthy
+      toxiproxy:
+        condition: service_started
     networks:
       - target_net
     healthcheck:
@@ -140,6 +160,10 @@ services:
     restart: unless-stopped
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
     networks:
@@ -149,6 +173,23 @@ services:
       - payment
       - inventory
       - auth
+
+  # ── Alertmanager (webhooks to /investigate) ────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: target_alertmanager
+    restart: unless-stopped
+    environment:
+      INVESTIGATE_SHARED_SECRET: ${INVESTIGATE_SHARED_SECRET:-dev-secret}
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    entrypoint: ["/bin/sh", "-c", "echo -n \"$${INVESTIGATE_SHARED_SECRET}\" > /tmp/token && exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml"]
+    ports:
+      - "9093:9093"
+    networks:
+      - target_net
+    depends_on:
+      - prometheus
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -188,3 +229,22 @@ services:
     depends_on:
       orders:
         condition: service_healthy
+
+  # ── SurveyOps API stub (/investigate endpoint) ─────────────────────────────
+  surveyops-api:
+    build:
+      context: ../surveyops/api
+      dockerfile: Dockerfile
+    container_name: surveyops_api
+    restart: unless-stopped
+    environment:
+      INVESTIGATE_SHARED_SECRET: ${INVESTIGATE_SHARED_SECRET:-dev-secret}
+    ports:
+      - "8000:8000"
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

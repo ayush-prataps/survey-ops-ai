@@ -81,3 +81,11 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
   - DB pool gauge on payment: `payment_db_pool_in_use_connections` and `payment_db_pool_capacity`.
 - Database host abstraction: Payment service uses single env var `POSTGRES_HOST=postgres` to allow inserting Toxiproxy in Step 2 without code modifications.
 - Traffic generator: Headless Locust container in compose generating continuous load (~2.5 req/s) to ensure Prometheus rules have continuous traffic to evaluate.
+
+**14 – Fault Injection, Alerting & Stub /investigate (DECIDED 2026-10-17)**
+- **Toxiproxy transparent proxy:** Inserted in compose between payment service and Postgres on port 5433 (`payment-postgres` proxy forwarding to `postgres:5432`). Zero app code modifications required.
+- **Alertmanager authentication:** Alertmanager v0.27 rejects arbitrary `headers` under `http_config`. Used native `authorization.type: Bearer` with `credentials_file: /tmp/token` populated dynamically from `INVESTIGATE_SHARED_SECRET` by the container entrypoint.
+- **Dual auth support in `/investigate`:** Accepts either `X-Shared-Secret` or `Authorization: Bearer <secret>` headers.
+- **Symptom-only contract & gap handling:** Incoming firing alerts parsed to `InvestigatePayload` without root-cause labels. Inferred fields and gaps (observed numeric value missing in Alertmanager webhook, logged as `-1.0` sentinel to be queried by Diagnostician) explicitly documented.
+- **Ground-truth isolation:** `eval/faults/inject_latency.py` writes ground-truth JSON to `eval/ground_truth/` (gitignored). Kept strictly isolated from `surveyops/`.
+- **Trial reset:** `scripts/reset_trial.sh` clears toxics and truncates payments/orders rows for reproducible testing.

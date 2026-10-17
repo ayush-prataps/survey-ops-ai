@@ -1,0 +1,32 @@
+groups:
+  - name: target_app
+    rules:
+      - alert: HighP99Latency
+        # p99 latency per handler across all services, bucketed at lowr resolution
+        expr: >
+          histogram_quantile(0.99,
+            sum by (le, handler) (
+              rate(http_request_duration_seconds_bucket[1m])
+            )
+          ) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 latency on {{ $labels.handler }}"
+          description: "p99 latency is {{ $value | humanizeDuration }} on handler {{ $labels.handler }}"
+
+      - alert: HighErrorRate
+        # 5xx ratio > 5% per handler
+        expr: >
+          (
+            sum by (handler) (rate(http_requests_total{status="5xx"}[1m]))
+            /
+            sum by (handler) (rate(http_requests_total[1m]))
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.handler }}"
+          description: "Error rate is {{ $value | humanizePercentage }} on handler {{ $labels.handler }}"

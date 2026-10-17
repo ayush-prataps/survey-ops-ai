@@ -6,3 +6,5 @@ node_modules/
 workspace/
 *.log
 .DS_Store
+# Generated ground-truth records from fault injection (scored after run, never committed)
+eval/ground_truth/*.json
