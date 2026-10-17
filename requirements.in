@@ -7,3 +7,5 @@ fastapi
 uvicorn
 pytest
 python-dotenv
+# Pin mcp<2.0.0: MCP 2.x introduces breaking changes to FastMCP/MCPServer and transport APIs
+mcp>=1.2.0,<2.0.0

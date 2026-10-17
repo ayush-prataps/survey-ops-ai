@@ -38,6 +38,21 @@ logger.propagate = False
 
 # ── Config ───────────────────────────────────────────────────────────────────
 SHARED_SECRET = os.environ.get("INVESTIGATE_SHARED_SECRET", "")
+INCIDENT_EXPIRY_SECONDS = int(os.environ.get("INCIDENT_EXPIRY_SECONDS", "900"))  # default: 15 min TTL
+
+
+def _verify_auth(x_shared_secret: str | None, authorization: str | None) -> None:
+    """Verifies X-Shared-Secret or Authorization: Bearer <token>. Raises 403 on mismatch."""
+    received_secret = x_shared_secret
+    if not received_secret and authorization:
+        parts = authorization.split(" ", 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            received_secret = parts[1].strip()
+
+    if SHARED_SECRET and received_secret != SHARED_SECRET:
+        logger.warning("Rejected API call: bad or missing shared secret")
+        raise HTTPException(status_code=403, detail="Forbidden: bad shared secret")
+
 
 # ── InvestigatePayload (matching docs/04-CONTRACTS.md & surveyops/schemas) ───
 try:
@@ -61,18 +76,47 @@ class IncidentDedupStore:
     """
     Tracks active incidents by (service, endpoint) in memory.
     Enforces at most one open incident per (service, endpoint) simultaneously.
+    Auto-expires stale incidents after expiry_seconds (default 15m) to prevent permanent blocking.
     """
-    def __init__(self) -> None:
+    def __init__(self, expiry_seconds: int = INCIDENT_EXPIRY_SECONDS) -> None:
         self._lock = Lock()
         self._open_incidents: dict[tuple[str, str], str] = {}
         self._incidents: dict[str, dict] = {}
+        self.expiry_seconds = expiry_seconds
+
+    def _purge_expired(self, now: datetime) -> None:
+        """Auto-close any incident that exceeded expiry_seconds without a close call."""
+        for key, inc_id in list(self._open_incidents.items()):
+            inc = self._incidents.get(inc_id)
+            if inc and inc.get("opened_at"):
+                try:
+                    opened_dt = datetime.fromisoformat(inc["opened_at"])
+                    if (now - opened_dt).total_seconds() > self.expiry_seconds:
+                        del self._open_incidents[key]
+                        inc["status"] = "expired"
+                        inc["closed_at"] = now.isoformat()
+                        logger.warning(
+                            "Auto-closed expired incident",
+                            extra={"extra_fields": {
+                                "incident_id": inc_id,
+                                "service": key[0],
+                                "endpoint": key[1],
+                                "stuck_duration_s": (now - opened_dt).total_seconds(),
+                            }},
+                        )
+                except Exception:
+                    pass
 
     def is_open(self, service: str, endpoint: str) -> bool:
+        now = datetime.now(timezone.utc)
         with self._lock:
+            self._purge_expired(now)
             return (service, endpoint) in self._open_incidents
 
     def get_open_incident_id(self, service: str, endpoint: str) -> str | None:
+        now = datetime.now(timezone.utc)
         with self._lock:
+            self._purge_expired(now)
             return self._open_incidents.get((service, endpoint))
 
     def open_incident(self, service: str, endpoint: str, payload_data: dict) -> tuple[str, bool]:
@@ -82,7 +126,9 @@ class IncidentDedupStore:
         - If already open: (existing_incident_id, False)
         - If new: (new_incident_id, True)
         """
+        now = datetime.now(timezone.utc)
         with self._lock:
+            self._purge_expired(now)
             key = (service, endpoint)
             if key in self._open_incidents:
                 return self._open_incidents[key], False
@@ -93,7 +139,7 @@ class IncidentDedupStore:
                 "incident_id": incident_id,
                 "service": service,
                 "endpoint": endpoint,
-                "opened_at": datetime.now(timezone.utc).isoformat(),
+                "opened_at": now.isoformat(),
                 "closed_at": None,
                 "status": "open",
                 "payload": payload_data,
@@ -123,7 +169,9 @@ class IncidentDedupStore:
             return False
 
     def list_open(self) -> list[dict]:
+        now = datetime.now(timezone.utc)
         with self._lock:
+            self._purge_expired(now)
             return [self._incidents[inc_id] for inc_id in self._open_incidents.values()]
 
     def clear(self) -> None:
@@ -224,7 +272,11 @@ def health() -> dict:
 
 
 @app.get("/incidents/open")
-def get_open_incidents() -> dict:
+def get_open_incidents(
+    x_shared_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _verify_auth(x_shared_secret, authorization)
     return {"open_incidents": dedup_store.list_open()}
 
 
@@ -235,7 +287,12 @@ class CloseIncidentRequest(BaseModel):
 
 
 @app.post("/incidents/close")
-def post_close_incident(req: CloseIncidentRequest) -> dict:
+def post_close_incident(
+    req: CloseIncidentRequest,
+    x_shared_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _verify_auth(x_shared_secret, authorization)
     if req.incident_id:
         closed = close_incident_by_id(req.incident_id)
         if not closed:
@@ -259,16 +316,8 @@ async def investigate(
     Receives Alertmanager webhook. Checks shared secret. Parses firing alerts into
     InvestigatePayload (symptom only). Deduplicates by (service, endpoint).
     """
-    # 1. Auth check (accepts X-Shared-Secret or Authorization: Bearer <token>)
-    received_secret = x_shared_secret
-    if not received_secret and authorization:
-        parts = authorization.split(" ", 1)
-        if len(parts) == 2 and parts[0].lower() == "bearer":
-            received_secret = parts[1].strip()
-
-    if SHARED_SECRET and received_secret != SHARED_SECRET:
-        logger.warning("Rejected /investigate call: bad or missing shared secret")
-        raise HTTPException(status_code=403, detail="Forbidden: bad shared secret")
+    # 1. Auth check
+    _verify_auth(x_shared_secret, authorization)
 
     # 2. Parse raw Alertmanager body
     try:

@@ -50,5 +50,8 @@ A wrong auto-merged patch in production is the worst failure. Human review is th
 **Why two representations of the repo (graph and semantic index)?**
 Graph gives structure for predicting failures. Semantic index finds code by meaning for localizing the patch. The proposition's `graph_edge_ref` gives the Remediator a head start.
 
+**Why is the ground-truth label `connection_pool_exhaustion` when Toxiproxy injected DB latency?**
+DB latency is the environmental trigger/stressor; the application's small pool size and missing timeout handling are the architectural weakness. In real systems, external slowdowns trigger connection pool starvation, which engineers remediate in software (tuning pool size, overflow, timeouts). Later benchmark trials will also inject direct connection starvation without latency, and the scorer matches within root-cause failure families.
+
 **Limitations to admit**
 Static analysis is incomplete. Detection needs alertable symptoms. Synthetic target app. Free-tier rate limits. Small benchmark.

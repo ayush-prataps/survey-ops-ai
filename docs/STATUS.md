@@ -35,8 +35,16 @@ Last updated: 2026-10-17
   - Built `surveyops/a2a_utils.py` for model encoding to `TextPart` and safe decoding via typed `A2ADecodeResult[T]`.
   - Added incident deduplication to `/investigate` (in-memory store with clear TODO to migrate to Postgres; duplicates ignored; explicit close function & endpoint).
   - Test suite expanded to 42 tests (`pytest tests/ -v` all passing): model roundtrips, malformed rejection, a2a encode/decode, dedup logic.
-- Repo hygiene: folder structure matches AGENTS.md, .gitignore covers .env/.venv/__pycache__, .env.example has no real secrets
-- Smoke test: tests/test_smoke.py — 3/3 passed
+- Step 4 completed (Experiment Runner & MCP Tools):
+  - FastMCP unified server (`surveyops/mcp_servers/`) with 3 tools: `prometheus_query` (named templates), `fetch_logs` (Docker SDK stdout, ANSI stripped, length/byte capped, `<UNTRUSTED_SERVICE_LOGS>` delimited), and `run_load_burst` (concurrency/duration capped).
+  - Pydantic models for all tool returns (`PrometheusQueryReturn`, `FetchLogsReturn`, `LoadBurstReturn`).
+  - Deterministic ADK Runner agent (`surveyops/agents/runner/`) with before/after agent & tool callbacks logging structured JSON. Zero LLM prompt injection vulnerability when reading logs.
+  - A2A integration: Runner served via `create_runner_a2a_app()` on port 8005 using `A2AFastAPIApplication` and `DefaultRequestHandler`.
+  - Docker Compose dual-network isolation: `data_net` internal bridge network isolates `toxiproxy` from `surveyops` containers. Verified `surveyops_runner` cannot reach `toxiproxy:8474`.
+  - Shared secret authentication and TTL auto-expiry added to `/incidents/close` and `/incidents/open`.
+  - Standalone verification script `scripts/test_runner_a2a.py` testing live query_metrics, fetch_logs, load_burst, and 5 negative test cases against live container.
+  - Live fault testing verified: injected latency fault -> payment load burst showed 3s latency and 500 errors -> payment logs captured `sqlalchemy.exc.TimeoutError: QueuePool limit...` safely wrapped with untrusted text flag.
+  - Test suite expanded to 69 tests (`pytest tests/ -v` all passing; 25 runner/MCP tests, 15 investigate tests, 17 schema/a2a tests, 9 target app tests, 3 smoke tests).
 
 ## In progress
 - (Nothing currently blocked or in flight)
@@ -46,8 +54,8 @@ Last updated: 2026-10-17
 
 ## Next 3
 1. Surface Mapper implementation (CrewAI)
-2. Experiment Runner implementation (ADK) + first MCP server (Prometheus query tool)
-3. Diagnostician LoopAgent implementation (ADK)
+2. Diagnostician LoopAgent implementation (ADK)
+3. Remediator implementation (CrewAI)
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

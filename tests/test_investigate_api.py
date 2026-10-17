@@ -279,16 +279,54 @@ class TestIncidentDeduplication:
         )
         inc_id = resp.json()["payloads"][0]["incident_id"]
 
-        # Verify listed in /incidents/open
-        open_list = client.get("/incidents/open").json()["open_incidents"]
+        # Verify listed in /incidents/open (with auth)
+        open_list = client.get("/incidents/open", headers=self.HEADERS).json()["open_incidents"]
         assert len(open_list) == 1
         assert open_list[0]["incident_id"] == inc_id
 
-        # Close via POST /incidents/close
-        close_resp = client.post("/incidents/close", json={"incident_id": inc_id})
+        # Close via POST /incidents/close (with auth)
+        close_resp = client.post("/incidents/close", json={"incident_id": inc_id}, headers=self.HEADERS)
         assert close_resp.status_code == 200
         assert close_resp.json()["status"] == "closed"
 
         # Verify no longer open
-        open_list_after = client.get("/incidents/open").json()["open_incidents"]
+        open_list_after = client.get("/incidents/open", headers=self.HEADERS).json()["open_incidents"]
         assert len(open_list_after) == 0
+
+    def test_incidents_endpoints_require_auth(self):
+        # Unauthenticated calls must be rejected
+        get_resp = client.get("/incidents/open")
+        assert get_resp.status_code == 403
+
+        post_resp = client.post("/incidents/close", json={"service": "payment", "endpoint": "/payment/charge"})
+        assert post_resp.status_code == 403
+
+    def test_expired_incident_auto_closes_and_allows_reopen(self):
+        import time
+
+        # Set temporary very short TTL (10ms)
+        original_ttl = api_main.dedup_store.expiry_seconds
+        try:
+            api_main.dedup_store.expiry_seconds = 0.05
+
+            resp1 = client.post(
+                "/investigate",
+                json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+                headers=self.HEADERS,
+            )
+            inc1 = resp1.json()["payloads"][0]["incident_id"]
+
+            # Wait for incident to expire
+            time.sleep(0.1)
+
+            # Subsequent alert should not be blocked; new incident opened
+            resp2 = client.post(
+                "/investigate",
+                json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+                headers=self.HEADERS,
+            )
+            assert resp2.json()["accepted"] == 1
+            inc2 = resp2.json()["payloads"][0]["incident_id"]
+            assert inc2 != inc1
+        finally:
+            api_main.dedup_store.expiry_seconds = original_ttl

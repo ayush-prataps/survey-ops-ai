@@ -3,6 +3,8 @@ version: "3.8"
 networks:
   target_net:
     driver: bridge
+  data_net:
+    driver: bridge
 
 volumes:
   target_postgres_data:
@@ -24,6 +26,7 @@ services:
       - "5432:5432"
     networks:
       - target_net
+      - data_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d target_app"]
       interval: 5s
@@ -31,6 +34,8 @@ services:
       retries: 5
 
   # ── Toxiproxy (payment-postgres fault injection point) ─────────────────────
+  # ISOLATION: On data_net ONLY. SurveyOps containers join target_net only,
+  # meaning no agent or SurveyOps container can resolve or reach port 8474.
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.9.0
     container_name: target_toxiproxy
@@ -42,7 +47,7 @@ services:
       - "127.0.0.1:8474:8474"   # Toxiproxy management API (bound to loopback only; never exposed publicly)
       - "127.0.0.1:5433:5433"   # payment-postgres proxy port (bound to loopback)
     networks:
-      - target_net
+      - data_net
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,6 +119,7 @@ services:
         condition: service_started
     networks:
       - target_net
+      - data_net
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8002/health\")'"]
       interval: 5s
@@ -248,3 +254,49 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # ── Docker Log Proxy (Read-only container logs proxy for target app services) ──
+  docker-log-proxy:
+    build:
+      context: docker_log_proxy
+      dockerfile: Dockerfile
+    container_name: docker_log_proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:2375/_ping\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # ── SurveyOps Experiment Runner (ADK agent served over A2A) ────────────────
+  runner:
+    build:
+      context: ..
+      dockerfile: surveyops/agents/runner/Dockerfile
+    container_name: surveyops_runner
+    restart: unless-stopped
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      ORDERS_SERVICE_URL: http://orders:8001
+      PAYMENT_SERVICE_URL: http://payment:8002
+      INVENTORY_SERVICE_URL: http://inventory:8003
+      AUTH_SERVICE_URL: http://auth:8004
+      RUNNER_PORT: "8005"
+      INVESTIGATE_SHARED_SECRET: ${INVESTIGATE_SHARED_SECRET:-dev-secret}
+      DOCKER_HOST: tcp://docker_log_proxy:2375
+      MAX_LOAD_BURST_CONCURRENCY: ${MAX_LOAD_BURST_CONCURRENCY:-10}
+      MAX_LOAD_BURST_SECONDS: ${MAX_LOAD_BURST_SECONDS:-10}
+    ports:
+      - "8005:8005"
+    networks:
+      - target_net
+    depends_on:
+      - prometheus
+      - orders
+      - payment
+      - docker-log-proxy
+

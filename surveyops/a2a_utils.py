@@ -56,6 +56,18 @@ def from_a2a_message(message: Any, model_cls: type[T]) -> A2ADecodeResult[T]:
         return from_a2a_text(message.text, model_cls)
 
     if isinstance(message, dict):
+        if "parts" in message and isinstance(message["parts"], list):
+            for part in message["parts"]:
+                if isinstance(part, dict):
+                    if "text" in part and part["text"]:
+                        res = from_a2a_text(part["text"], model_cls)
+                        if res.is_ok:
+                            return res
+                    if "data" in part and part["data"] is not None:
+                        try:
+                            return A2ADecodeResult(value=model_cls.model_validate(part["data"]))
+                        except (ValidationError, Exception) as exc:
+                            return A2ADecodeResult(error=f"A2A validation error for {model_cls.__name__}: {exc}")
         try:
             return A2ADecodeResult(value=model_cls.model_validate(message))
         except (ValidationError, Exception) as exc:
