@@ -33,7 +33,8 @@ Metrics (Prometheus) say how much and how often. Logs say what exactly happened.
 Plan: one cloud VM (GCP or AWS, student credits) running the full Compose stack. Deploy a skeleton early, because networking and Toxiproxy surprises appear on first remote deploy.
 - Only the dashboard is publicly exposed.
 - Everything else stays on the internal Docker network.
-- `/investigate` requires the shared-secret header.
+- `/investigate` requires shared-secret authentication (`Authorization: Bearer <secret>` or `X-Shared-Secret`).
+- Toxiproxy API (port 8474) lists active toxics, which gives away injected faults: `eval/` must NEVER be mounted into `surveyops-api` or any agent container, Experiment Runner must not be given network route or credentials to port 8474, and on the cloud VM port 8474 must NEVER be exposed publicly.
 - Secrets in `.env` on the VM, never in the repo.
 Provider and VM size: OPEN.
 

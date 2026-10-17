@@ -29,7 +29,7 @@ class InvestigatePayload(BaseModel):   # Alertmanager -> /investigate. SYMPTOM O
     service: str
     endpoint: str
     metric: str
-    observed: float
+    observed: float | None = None      # Optional: Alertmanager omits scalar observed value; filled by Diagnostician
     threshold: float
     window_start: datetime
     # NEVER add a root-cause or fault label here.
@@ -114,7 +114,7 @@ class IncidentReport(BaseModel):       # final structured output, rendered to Ma
 Surface Mapper tools (graph builder, spec parser) are plain code tools, wrapped as MCP only if it adds value.
 
 ## /investigate
-`POST /investigate`, header `X-Shared-Secret`, body `InvestigatePayload`. Creates an incident record, starts the Diagnostician. Lives on the SurveyOps backend, not the target app.
+`POST /investigate`, header `Authorization: Bearer <secret>` (or `X-Shared-Secret`), body `InvestigatePayload`. Creates an incident record, starts the Diagnostician. Lives on the SurveyOps backend, not the target app.
 
 ## A2A transport rules (from spike 2, 2026-10-14)
 - Payloads travel as `TextPart(model_dump_json())`, not `DataPart`. Applies to every A2A link.

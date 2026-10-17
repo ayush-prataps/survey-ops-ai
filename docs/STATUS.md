@@ -29,6 +29,12 @@ Last updated: 2026-10-17
   - Trial reset script in `scripts/reset_trial.sh` (clears toxics and truncates payments/orders tables).
   - End-to-end verified: injected latency -> p99 jumped to >10s -> Prometheus alerts fired -> Alertmanager delivered webhook -> `/investigate` logged symptom payload. Clean reset verified.
   - Unit tests: `tests/test_investigate_api.py` (10/10 passed; 20/20 total tests pass).
+- Step 3 completed (Schemas, A2A Transport Utils, Incident Deduplication):
+  - Every model in `docs/04-CONTRACTS.md` implemented as Pydantic models across modular files in `surveyops/schemas/` with `__init__.py` exports.
+  - Reconciled `InvestigatePayload.observed` as `float | None = None` in schema, API, and contracts doc.
+  - Built `surveyops/a2a_utils.py` for model encoding to `TextPart` and safe decoding via typed `A2ADecodeResult[T]`.
+  - Added incident deduplication to `/investigate` (in-memory store with clear TODO to migrate to Postgres; duplicates ignored; explicit close function & endpoint).
+  - Test suite expanded to 42 tests (`pytest tests/ -v` all passing): model roundtrips, malformed rejection, a2a encode/decode, dedup logic.
 - Repo hygiene: folder structure matches AGENTS.md, .gitignore covers .env/.venv/__pycache__, .env.example has no real secrets
 - Smoke test: tests/test_smoke.py — 3/3 passed
 
@@ -39,9 +45,9 @@ Last updated: 2026-10-17
 - None
 
 ## Next 3
-1. Pydantic schemas in `surveyops/schemas/` matching `docs/04-CONTRACTS.md`
-2. Surface Mapper implementation (CrewAI)
-3. Experiment Runner implementation (ADK) + first MCP server
+1. Surface Mapper implementation (CrewAI)
+2. Experiment Runner implementation (ADK) + first MCP server (Prometheus query tool)
+3. Diagnostician LoopAgent implementation (ADK)
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

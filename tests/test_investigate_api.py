@@ -1,28 +1,35 @@
 """
 Tests for surveyops/api/main.py:
 - Payload parsing from Alertmanager webhook bodies
-- X-Shared-Secret enforcement
-- Edge cases (missing fields, resolved alerts)
-
-These are unit tests using TestClient — no Docker required.
+- Shared-secret authentication (X-Shared-Secret and Authorization: Bearer)
+- Incident deduplication by (service, endpoint)
+- Incident close function and endpoint
 """
 
+from datetime import datetime, timezone
 import os
 import sys
-from datetime import datetime, timezone
 
 import pytest
-
-# Add surveyops/api to path so we can import main directly
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "surveyops", "api"))
-
-import main as api_main
 from fastapi.testclient import TestClient
 
+# Add surveyops/api and repo root to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "surveyops", "api"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Patch the shared secret before creating the client
+import main as api_main
+
+# Patch shared secret for testing
 api_main.SHARED_SECRET = "test-secret"
 client = TestClient(api_main.app)
+
+
+@pytest.fixture(autouse=True)
+def clean_dedup_store():
+    """Ensure incident store is clean before and after each test."""
+    api_main.dedup_store.clear()
+    yield
+    api_main.dedup_store.clear()
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -34,7 +41,7 @@ def _alertmanager_body(
 ) -> dict:
     return {
         "version": "4",
-        "status": "firing",
+        "status": status,
         "receiver": "surveyops-webhook",
         "groupLabels": {"alertname": alertname, "handler": handler},
         "alerts": [
@@ -107,8 +114,9 @@ class TestPayloadParsing:
         assert payload["service"] == "payment"
         assert payload["metric"] == "http_request_duration_seconds"
         assert payload["threshold"] == 0.5
-        # observed is -1.0 (sentinel) — Alertmanager doesn't carry the numeric value
-        assert payload["observed"] == -1.0
+        # Reconciled: observed is None (omitted by Alertmanager, filled by Diagnostician)
+        assert payload["observed"] is None
+        assert "incident_id" in payload
 
     def test_high_error_rate_alert_parsed(self):
         resp = client.post(
@@ -190,3 +198,97 @@ class TestPayloadParsing:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+class TestIncidentDeduplication:
+    HEADERS = {"X-Shared-Secret": "test-secret"}
+
+    def test_duplicate_alert_ignored_for_open_incident(self):
+        # 1. First alert creates incident
+        resp1 = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+            headers=self.HEADERS,
+        )
+        assert resp1.status_code == 200
+        data1 = resp1.json()
+        assert data1["accepted"] == 1
+        assert len(data1["ignored_duplicates"]) == 0
+        incident_id = data1["payloads"][0]["incident_id"]
+
+        # 2. Second alert for same endpoint ignored as duplicate
+        resp2 = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+            headers=self.HEADERS,
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2["accepted"] == 0
+        assert len(data2["ignored_duplicates"]) == 1
+        assert data2["ignored_duplicates"][0]["incident_id"] == incident_id
+        assert data2["ignored_duplicates"][0]["service"] == "payment"
+        assert data2["ignored_duplicates"][0]["endpoint"] == "/payment/charge"
+
+    def test_distinct_endpoints_create_distinct_incidents(self):
+        resp1 = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+            headers=self.HEADERS,
+        )
+        resp2 = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighErrorRate", "/orders"),
+            headers=self.HEADERS,
+        )
+        assert resp1.json()["accepted"] == 1
+        assert resp2.json()["accepted"] == 1
+        inc1 = resp1.json()["payloads"][0]["incident_id"]
+        inc2 = resp2.json()["payloads"][0]["incident_id"]
+        assert inc1 != inc2
+
+    def test_close_incident_by_function_allows_new_incident(self):
+        # Open incident
+        resp = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+            headers=self.HEADERS,
+        )
+        inc1 = resp.json()["payloads"][0]["incident_id"]
+
+        # Close incident via explicit function
+        closed_id = api_main.close_incident("payment", "/payment/charge")
+        assert closed_id == inc1
+
+        # Re-investigating opens a new incident
+        resp_after = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+            headers=self.HEADERS,
+        )
+        assert resp_after.json()["accepted"] == 1
+        inc2 = resp_after.json()["payloads"][0]["incident_id"]
+        assert inc2 != inc1
+
+    def test_close_incident_via_api_endpoint(self):
+        # Open incident
+        resp = client.post(
+            "/investigate",
+            json=_alertmanager_body("HighP99Latency", "/payment/charge"),
+            headers=self.HEADERS,
+        )
+        inc_id = resp.json()["payloads"][0]["incident_id"]
+
+        # Verify listed in /incidents/open
+        open_list = client.get("/incidents/open").json()["open_incidents"]
+        assert len(open_list) == 1
+        assert open_list[0]["incident_id"] == inc_id
+
+        # Close via POST /incidents/close
+        close_resp = client.post("/incidents/close", json={"incident_id": inc_id})
+        assert close_resp.status_code == 200
+        assert close_resp.json()["status"] == "closed"
+
+        # Verify no longer open
+        open_list_after = client.get("/incidents/open").json()["open_incidents"]
+        assert len(open_list_after) == 0

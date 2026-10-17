@@ -15,7 +15,7 @@ Target app (orders, payment, inventory, auth + Postgres) runs continuously in Do
 1. **Fault injected.** Eval script calls Toxiproxy (e.g. latency on payment -> Postgres). Same script writes true cause to the ground-truth store. Agents never see it.
 2. **Symptoms.** Payment requests slow down, metrics change.
 3. **Detection (no LLM).** Prometheus scrapes /metrics every ~15s. Alert rule fires (e.g. p99 latency on POST /payment/charge > 0.5s for 1m). Expect ~1 to 2 minutes from injection to trigger.
-4. **Trigger.** Alertmanager POSTs a webhook to `/investigate` on the SurveyOps backend (not the target app). Payload is symptom only. Requires shared-secret header.
+4. **Trigger.** Alertmanager POSTs a webhook to `/investigate` on the SurveyOps backend (not the target app). Payload is symptom only. Requires shared-secret authentication (`Authorization: Bearer <secret>` or `X-Shared-Secret`).
 5. **Diagnostician starts.** Loads propositions for the affected endpoint into session state. Picks leading hypothesis.
 6. **Loop.** Observe -> Hypothesize -> Challenge ("what evidence would disprove this?") -> A2A experiment request to Runner -> Runner queries Prometheus/logs/drives small load burst, returns raw data -> update ledger and confidence -> repeat.
 7. **Exit conditions (three):** (a) one hypothesis dominates, (b) iteration budget exhausted, (c) legitimate abstention "insufficient evidence". (b) and (c) produce no PR.

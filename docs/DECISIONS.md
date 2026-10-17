@@ -13,6 +13,7 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - **2026-10-14** Proposition carries `graph_edge_ref` passed to Remediator as a localization hint. Semantic search confirms or is fallback.
 - **2026-10-14** Deadlines in the handout are negotiable with faculty. Optimize for a robust system, avoid overhead.
 - **2026-10-14** Docs structure: one canonical AGENTS.md, thin tool-specific pointers, one topic per docs file.
+- **2026-10-17** Ground-truth root cause for DB latency injection is `connection_pool_exhaustion` (FailureMode enum value). Reason: pool exhaustion is the application-level weakness the Remediator can patch (pool size, overflow, timeouts); DB latency is the external stressor that exposes it. Rejected: root cause = DB latency (infrastructure fault with no code fix).
 
 ## OPEN (decide, then move up)
 1. Log source: Docker SDK stdout vs Loki.
@@ -87,5 +88,11 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - **Alertmanager authentication:** Alertmanager v0.27 rejects arbitrary `headers` under `http_config`. Used native `authorization.type: Bearer` with `credentials_file: /tmp/token` populated dynamically from `INVESTIGATE_SHARED_SECRET` by the container entrypoint.
 - **Dual auth support in `/investigate`:** Accepts either `X-Shared-Secret` or `Authorization: Bearer <secret>` headers.
 - **Symptom-only contract & gap handling:** Incoming firing alerts parsed to `InvestigatePayload` without root-cause labels. Inferred fields and gaps (observed numeric value missing in Alertmanager webhook, logged as `-1.0` sentinel to be queried by Diagnostician) explicitly documented.
-- **Ground-truth isolation:** `eval/faults/inject_latency.py` writes ground-truth JSON to `eval/ground_truth/` (gitignored). Kept strictly isolated from `surveyops/`.
+- **Ground-truth label & isolation:** `eval/faults/inject_latency.py` writes ground-truth records with `failure_mode: "connection_pool_exhaustion"` (matching `FailureMode` enum in `docs/04-CONTRACTS.md`) to `eval/ground_truth/` (gitignored). Kept strictly isolated from `surveyops/`.
 - **Trial reset:** `scripts/reset_trial.sh` clears toxics and truncates payments/orders rows for reproducible testing.
+
+**15 – Schemas, A2A Serialization & Incident Deduplication (DECIDED 2026-10-17)**
+- **InvestigatePayload.observed optional:** Reconciled to `float | None = None`. Alertmanager webhooks omit numeric scalar observed metrics; making it optional allows clean ingestion while preserving the contract for Diagnostician runtime enrichment.
+- **Pydantic schema modularity:** Created domain modules under `surveyops/schemas/` (`failure_modes`, `propositions`, `incidents`, `experiments`, `diagnosis`, `remediation`, `reports`) matching `docs/04-CONTRACTS.md`.
+- **A2A transport utilities:** Built `surveyops/a2a_utils.py` providing `to_a2a_text_part` and `from_a2a_message` returning typed `A2ADecodeResult[T]`, safely handling `ValidationError` without unhandled exceptions.
+- **Incident deduplication:** `/investigate` enforces at most one open incident per `(service, endpoint)` using in-memory `IncidentDedupStore` (with explicit TODO to persist in PostgreSQL table in Phase 2). Duplicate alerts are logged and ignored; incidents are closable via `close_incident()` or `POST /incidents/close`.

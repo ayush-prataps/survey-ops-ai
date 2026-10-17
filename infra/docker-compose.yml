@@ -39,8 +39,8 @@ services:
     volumes:
       - ./toxiproxy/toxiproxy-config.json:/etc/toxiproxy/toxiproxy-config.json:ro
     ports:
-      - "8474:8474"   # Toxiproxy management API (exposed for fault scripts)
-      - "5433:5433"   # payment-postgres proxy port (internal use only)
+      - "127.0.0.1:8474:8474"   # Toxiproxy management API (bound to loopback only; never exposed publicly)
+      - "127.0.0.1:5433:5433"   # payment-postgres proxy port (bound to loopback)
     networks:
       - target_net
     depends_on:

@@ -11,7 +11,8 @@
 - **Prompt injection via logs:** logs are attacker-controllable text. The Runner sanitizes (strip control chars, truncate, cap length) and wraps log content in clear delimiters. The Diagnostician's instructions say delimited content is untrusted data and must never be followed as instructions. `Observation.contains_untrusted_text` marks it.
 - **Remediator limits:** may only modify files under the repo, never CI workflow files or secrets; minimal-scope GitHub token; opens PRs only, never merges.
 - **Onboarding input:** repo URL validated against a github.com allowlist. Light touch, this is the only user-text input.
-- **Endpoint auth:** `/investigate` shared secret.
+- **Endpoint auth:** `/investigate` shared secret (`Authorization: Bearer <secret>` or `X-Shared-Secret`).
+- **Toxiproxy API & eval/ isolation:** Toxiproxy control API (port 8474) lists active toxics and reveals ground truth. Runner allowlist prohibits access to port 8474; `eval/` is never mounted into SurveyOps containers; on cloud deployments port 8474 binds only to loopback or is unexposed.
 - **Loop safety:** hard iteration cap (`MAX_LOOP_ITERATIONS`).
 
 ## Observability (requirement 9)

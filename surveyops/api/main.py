@@ -1,23 +1,26 @@
 """
 SurveyOps API stub: POST /investigate
 Receives Alertmanager webhooks, checks shared secret, parses InvestigatePayload, logs it.
-No LLM calls. No agent startup. Step 2 stub only.
+Includes incident deduplication: one open incident per (service, endpoint).
+No LLM calls. No agent startup. Step 3 stub.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 import os
 import sys
+from threading import Lock
+import uuid
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 # ── Structured logging ──────────────────────────────────────────────────────
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         obj = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": "surveyops-api",
             "level": record.levelname,
             "message": record.getMessage(),
@@ -36,46 +39,124 @@ logger.propagate = False
 # ── Config ───────────────────────────────────────────────────────────────────
 SHARED_SECRET = os.environ.get("INVESTIGATE_SHARED_SECRET", "")
 
-# ── InvestigatePayload (from docs/04-CONTRACTS.md) ───────────────────────────
-class InvestigatePayload(BaseModel):
-    """Symptom-only payload. NEVER add root-cause or fault labels here."""
-    alert: str
-    service: str
-    endpoint: str
-    metric: str
-    observed: float
-    threshold: float
-    window_start: datetime
+# ── InvestigatePayload (matching docs/04-CONTRACTS.md & surveyops/schemas) ───
+try:
+    from surveyops.schemas import InvestigatePayload
+except ImportError:
+    class InvestigatePayload(BaseModel):
+        """Symptom-only payload. NEVER add root-cause or fault labels here."""
+        alert: str
+        service: str
+        endpoint: str
+        metric: str
+        observed: float | None = None
+        threshold: float
+        window_start: datetime
 
 
-# ── Alertmanager webhook shape (for reference, not persisted) ─────────────────
-# Alertmanager POSTs:
-# {
-#   "version": "4",
-#   "groupLabels": {"alertname": "...", "handler": "..."},
-#   "alerts": [
-#     {
-#       "status": "firing",
-#       "labels": {"alertname": "HighP99Latency", "handler": "/payment/charge", ...},
-#       "annotations": {"description": "p99 latency is X on handler Y"},
-#       "startsAt": "2026-10-17T10:00:00Z",
-#       "endsAt":   "0001-01-01T00:00:00Z"
-#     }
-#   ]
-# }
-#
-# GAP REPORT vs InvestigatePayload:
-#   - alert       -> labels.alertname                               ✓ present
-#   - service     -> NOT in Alertmanager payload. Inferred from handler label (e.g. "/payment/charge" -> "payment")
-#   - endpoint    -> labels.handler                                 ✓ present
-#   - metric      -> NOT in Alertmanager payload. Inferred from alertname
-#                    ("HighP99Latency" -> "http_request_duration_seconds", "HighErrorRate" -> "http_requests_total")
-#   - observed    -> NOT in Alertmanager payload. Alertmanager does not include the numeric observed value.
-#                    Will log as -1.0 (sentinel) until Prometheus query fills it at diagnosis time.
-#   - threshold   -> NOT in Alertmanager payload. Hardcoded from alert rule (0.5s / 0.05).
-#   - window_start -> labels.startsAt or groupLabels                ✓ present as RFC3339 string
+# ── Incident Deduplication Store (In-memory) ─────────────────────────────────
+# TODO: Persist incident records and lock state to PostgreSQL incidents table
+# once database migrations and schema management are implemented in Phase 2.
+class IncidentDedupStore:
+    """
+    Tracks active incidents by (service, endpoint) in memory.
+    Enforces at most one open incident per (service, endpoint) simultaneously.
+    """
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._open_incidents: dict[tuple[str, str], str] = {}
+        self._incidents: dict[str, dict] = {}
+
+    def is_open(self, service: str, endpoint: str) -> bool:
+        with self._lock:
+            return (service, endpoint) in self._open_incidents
+
+    def get_open_incident_id(self, service: str, endpoint: str) -> str | None:
+        with self._lock:
+            return self._open_incidents.get((service, endpoint))
+
+    def open_incident(self, service: str, endpoint: str, payload_data: dict) -> tuple[str, bool]:
+        """
+        Attempts to open an incident for (service, endpoint).
+        Returns (incident_id, is_new):
+        - If already open: (existing_incident_id, False)
+        - If new: (new_incident_id, True)
+        """
+        with self._lock:
+            key = (service, endpoint)
+            if key in self._open_incidents:
+                return self._open_incidents[key], False
+
+            incident_id = f"inc-{uuid.uuid4().hex[:8]}"
+            self._open_incidents[key] = incident_id
+            self._incidents[incident_id] = {
+                "incident_id": incident_id,
+                "service": service,
+                "endpoint": endpoint,
+                "opened_at": datetime.now(timezone.utc).isoformat(),
+                "closed_at": None,
+                "status": "open",
+                "payload": payload_data,
+            }
+            return incident_id, True
+
+    def close_incident(self, service: str, endpoint: str) -> str | None:
+        """Closes an open incident for (service, endpoint). Returns closed incident_id or None."""
+        with self._lock:
+            key = (service, endpoint)
+            incident_id = self._open_incidents.pop(key, None)
+            if incident_id and incident_id in self._incidents:
+                self._incidents[incident_id]["status"] = "closed"
+                self._incidents[incident_id]["closed_at"] = datetime.now(timezone.utc).isoformat()
+            return incident_id
+
+    def close_incident_by_id(self, incident_id: str) -> bool:
+        """Closes an open incident by incident_id. Returns True if closed, False if not open."""
+        with self._lock:
+            for key, inc_id in list(self._open_incidents.items()):
+                if inc_id == incident_id:
+                    del self._open_incidents[key]
+                    if incident_id in self._incidents:
+                        self._incidents[incident_id]["status"] = "closed"
+                        self._incidents[incident_id]["closed_at"] = datetime.now(timezone.utc).isoformat()
+                    return True
+            return False
+
+    def list_open(self) -> list[dict]:
+        with self._lock:
+            return [self._incidents[inc_id] for inc_id in self._open_incidents.values()]
+
+    def clear(self) -> None:
+        """Clear all active and historical incidents (for test/trial reset)."""
+        with self._lock:
+            self._open_incidents.clear()
+            self._incidents.clear()
 
 
+dedup_store = IncidentDedupStore()
+
+
+# Explicit functions to close incidents
+def close_incident(service: str, endpoint: str) -> str | None:
+    """Closes an open incident for (service, endpoint)."""
+    closed_id = dedup_store.close_incident(service, endpoint)
+    if closed_id:
+        logger.info(
+            "Closed incident",
+            extra={"extra_fields": {"incident_id": closed_id, "service": service, "endpoint": endpoint}},
+        )
+    return closed_id
+
+
+def close_incident_by_id(incident_id: str) -> bool:
+    """Closes an open incident by incident_id."""
+    success = dedup_store.close_incident_by_id(incident_id)
+    if success:
+        logger.info("Closed incident by id", extra={"extra_fields": {"incident_id": incident_id}})
+    return success
+
+
+# ── Alertmanager mapping helpers ─────────────────────────────────────────────
 _ALERT_TO_METRIC = {
     "HighP99Latency": "http_request_duration_seconds",
     "HighErrorRate": "http_requests_total",
@@ -95,8 +176,7 @@ def _service_from_handler(handler: str) -> str:
 def _parse_alert_to_payload(alert: dict) -> InvestigatePayload | None:
     """
     Map a single Alertmanager alert object to InvestigatePayload.
-    Returns None for alerts that cannot be mapped (e.g. resolved alerts).
-    Gaps are logged explicitly.
+    Returns None for alerts that cannot be mapped.
     """
     labels = alert.get("labels", {})
     alertname = labels.get("alertname", "")
@@ -104,8 +184,10 @@ def _parse_alert_to_payload(alert: dict) -> InvestigatePayload | None:
     starts_at = alert.get("startsAt", "")
 
     if not alertname or not handler:
-        logger.warning("Alert missing alertname or handler label, skipping",
-                       extra={"extra_fields": {"labels": labels}})
+        logger.warning(
+            "Alert missing alertname or handler label, skipping",
+            extra={"extra_fields": {"labels": labels}},
+        )
         return None
 
     service = _service_from_handler(handler)
@@ -115,11 +197,11 @@ def _parse_alert_to_payload(alert: dict) -> InvestigatePayload | None:
     try:
         window_start = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
-        window_start = datetime.utcnow()
+        window_start = datetime.now(timezone.utc)
 
-    # GAP: Alertmanager does not carry the numeric observed value.
-    # Using -1.0 as sentinel; Diagnostician will query Prometheus at runtime.
-    observed = -1.0
+    # Reconciled: Alertmanager omits scalar observed float; set to None.
+    # Diagnostician will query Prometheus directly at runtime.
+    observed = None
 
     return InvestigatePayload(
         alert=alertname,
@@ -141,6 +223,32 @@ def health() -> dict:
     return {"status": "ok", "service": "surveyops-api"}
 
 
+@app.get("/incidents/open")
+def get_open_incidents() -> dict:
+    return {"open_incidents": dedup_store.list_open()}
+
+
+class CloseIncidentRequest(BaseModel):
+    service: str | None = None
+    endpoint: str | None = None
+    incident_id: str | None = None
+
+
+@app.post("/incidents/close")
+def post_close_incident(req: CloseIncidentRequest) -> dict:
+    if req.incident_id:
+        closed = close_incident_by_id(req.incident_id)
+        if not closed:
+            raise HTTPException(status_code=404, detail="Incident not found or already closed")
+        return {"status": "closed", "incident_id": req.incident_id}
+    if req.service and req.endpoint:
+        closed_id = close_incident(req.service, req.endpoint)
+        if not closed_id:
+            raise HTTPException(status_code=404, detail="No open incident for this service and endpoint")
+        return {"status": "closed", "incident_id": closed_id}
+    raise HTTPException(status_code=400, detail="Must provide incident_id or both service and endpoint")
+
+
 @app.post("/investigate", status_code=200)
 async def investigate(
     request: Request,
@@ -148,10 +256,8 @@ async def investigate(
     authorization: str | None = Header(default=None),
 ) -> dict:
     """
-    Receives Alertmanager webhook. Checks shared secret. Parses each firing alert
-    into InvestigatePayload (symptom only). Logs and returns 200.
-
-    This is the stub implementation: no agent is started.
+    Receives Alertmanager webhook. Checks shared secret. Parses firing alerts into
+    InvestigatePayload (symptom only). Deduplicates by (service, endpoint).
     """
     # 1. Auth check (accepts X-Shared-Secret or Authorization: Bearer <token>)
     received_secret = x_shared_secret
@@ -181,18 +287,19 @@ async def investigate(
         }},
     )
 
-    # 3. Map each firing alert to InvestigatePayload and log it
+    # 3. Process firing alerts with deduplication
     accepted: list[dict] = []
+    ignored_duplicates: list[dict] = []
+
     for alert_obj in raw_body.get("alerts", []):
         if alert_obj.get("status") != "firing":
-            continue  # skip resolved alerts (send_resolved=false, but guard anyway)
+            continue
 
         payload = _parse_alert_to_payload(alert_obj)
         if payload is None:
             continue
 
         try:
-            # Validate roundtrip (catches any future schema drift)
             validated = InvestigatePayload.model_validate(payload.model_dump())
         except ValidationError as exc:
             logger.error(
@@ -201,10 +308,44 @@ async def investigate(
             )
             continue
 
-        logger.info(
-            "Parsed symptom-only InvestigatePayload",
-            extra={"extra_fields": validated.model_dump(mode="json")},
+        # Deduplication check
+        incident_id, is_new = dedup_store.open_incident(
+            validated.service,
+            validated.endpoint,
+            validated.model_dump(mode="json"),
         )
-        accepted.append(validated.model_dump(mode="json"))
 
-    return {"accepted": len(accepted), "payloads": accepted}
+        if not is_new:
+            logger.info(
+                "Duplicate alert ignored for already open incident",
+                extra={"extra_fields": {
+                    "incident_id": incident_id,
+                    "service": validated.service,
+                    "endpoint": validated.endpoint,
+                    "alert": validated.alert,
+                }},
+            )
+            ignored_duplicates.append({
+                "incident_id": incident_id,
+                "service": validated.service,
+                "endpoint": validated.endpoint,
+                "alert": validated.alert,
+            })
+            continue
+
+        logger.info(
+            "Opened new incident for symptom-only payload",
+            extra={"extra_fields": {
+                "incident_id": incident_id,
+                "payload": validated.model_dump(mode="json"),
+            }},
+        )
+        accepted_item = validated.model_dump(mode="json")
+        accepted_item["incident_id"] = incident_id
+        accepted.append(accepted_item)
+
+    return {
+        "accepted": len(accepted),
+        "payloads": accepted,
+        "ignored_duplicates": ignored_duplicates,
+    }

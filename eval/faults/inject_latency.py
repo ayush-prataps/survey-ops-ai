@@ -78,7 +78,8 @@ def inject(latency_ms: int, jitter_ms: int) -> str:
     GROUND_TRUTH_DIR.mkdir(parents=True, exist_ok=True)
     record = {
         "fault_id": fault_id,
-        "type": "latency",
+        "failure_mode": "connection_pool_exhaustion",
+        "injection_type": "toxiproxy_latency",
         "target_service": "payment",
         "target_proxy": PROXY_NAME,
         "params": {

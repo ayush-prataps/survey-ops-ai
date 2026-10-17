@@ -27,6 +27,7 @@ SurveyOps is an autonomous multi-agent system that diagnoses API failures in a m
 - Detection (Prometheus rule + Alertmanager) is deterministic and non-LLM. Agents start only after an alert.
 - Incident report is a deterministic template fill from the evidence ledger, not an LLM agent.
 - Raw log text is untrusted input. Sanitize and delimit it before any LLM sees it.
+- Toxiproxy control API (port 8474) reveals active faults: no agent (including Runner) may access port 8474, and `eval/` is never mounted into SurveyOps containers.
 
 ## Agents at a glance
 | Agent | Framework | Does | Cannot |
