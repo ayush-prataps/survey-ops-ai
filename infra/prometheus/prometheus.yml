@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "target-app-services"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "orders:8001"
+          - "payment:8002"
+          - "inventory:8003"
+          - "auth:8004"

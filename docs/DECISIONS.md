@@ -72,3 +72,12 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - **Negative test (malformed output):** ADK side caught Pydantic `ValidationError` when the stub returned invalid JSON.
 - **State isolation:** ADK session state is completely isolated across the A2A wire (server received 0 leaked keys). Everything Remediator needs must be passed explicitly in the message.
 - **Callbacks:** ADK `before_agent_callback` and `after_agent_callback` fire around `RemoteA2aAgent`, observing input and output content parts.
+
+**13 – Target App Architecture & Metrics Shape (DECIDED 2026-10-14)**
+- Four microservices built: `auth`, `inventory`, `payment`, `orders` with SQLite/Postgres.
+- Metrics engine: `prometheus-fastapi-instrumentator`. Verified metric names and labels:
+  - Request counts: `http_requests_total{handler="...", method="...", status="2xx|4xx|5xx"}`
+  - Latency: `http_request_duration_seconds_bucket{handler="...", method="...", le="..."}`
+  - DB pool gauge on payment: `payment_db_pool_in_use_connections` and `payment_db_pool_capacity`.
+- Database host abstraction: Payment service uses single env var `POSTGRES_HOST=postgres` to allow inserting Toxiproxy in Step 2 without code modifications.
+- Traffic generator: Headless Locust container in compose generating continuous load (~2.5 req/s) to ensure Prometheus rules have continuous traffic to evaluate.

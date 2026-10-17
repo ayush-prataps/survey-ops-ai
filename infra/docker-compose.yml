@@ -1,0 +1,190 @@
+version: "3.8"
+
+networks:
+  target_net:
+    driver: bridge
+
+volumes:
+  target_postgres_data:
+  grafana_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: target_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-target_app}
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - target_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d target_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth:
+    build:
+      context: ../services/target_app/auth
+      dockerfile: Dockerfile
+    container_name: target_auth
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8004/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  inventory:
+    build:
+      context: ../services/target_app/inventory
+      dockerfile: Dockerfile
+    container_name: target_inventory
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: target_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8003/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment:
+    build:
+      context: ../services/target_app/payment
+      dockerfile: Dockerfile
+    container_name: target_payment
+    restart: unless-stopped
+    environment:
+      # Single env var for DB host to easily route through proxy in the future
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: target_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POOL_SIZE: ${PAYMENT_POOL_SIZE:-5}
+      MAX_OVERFLOW: ${PAYMENT_MAX_OVERFLOW:-0}
+      POOL_TIMEOUT: ${PAYMENT_POOL_TIMEOUT:-5.0}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8002/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  orders:
+    build:
+      context: ../services/target_app/orders
+      dockerfile: Dockerfile
+    container_name: target_orders
+    restart: unless-stopped
+    environment:
+      AUTH_SERVICE_URL: http://auth:8004
+      INVENTORY_SERVICE_URL: http://inventory:8003
+      PAYMENT_SERVICE_URL: http://payment:8002
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: target_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+      payment:
+        condition: service_healthy
+    networks:
+      - target_net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8001/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: target_prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - target_net
+    depends_on:
+      - orders
+      - payment
+      - inventory
+      - auth
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: target_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - target_net
+    depends_on:
+      - prometheus
+
+  loadgen:
+    build:
+      context: ./loadgen
+      dockerfile: Dockerfile
+    container_name: target_loadgen
+    restart: unless-stopped
+    environment:
+      LOCUST_HOST: http://orders:8001
+      LOCUST_USERS: ${LOCUST_USERS:-5}
+      LOCUST_SPAWN_RATE: ${LOCUST_SPAWN_RATE:-2}
+      LOCUST_MIN_WAIT: ${LOCUST_MIN_WAIT:-1.0}
+      LOCUST_MAX_WAIT: ${LOCUST_MAX_WAIT:-3.0}
+    command: ["locust", "-f", "locustfile.py", "--headless", "-H", "http://orders:8001", "-u", "${LOCUST_USERS:-5}", "-r", "${LOCUST_SPAWN_RATE:-2}"]
+    networks:
+      - target_net
+    depends_on:
+      orders:
+        condition: service_healthy
