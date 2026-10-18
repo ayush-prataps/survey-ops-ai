@@ -35,13 +35,16 @@ class PropositionList(BaseModel):
 
 
 def build_surface_mapper_agent(
-    model: str = "gemini/gemini-3.8-flash",
+    model: Optional[str] = None,
     api_key: Optional[str] = None,
     callbacks: Optional[SurfaceMapperCallbackHandler] = None,
 ) -> Agent:
     """Initializes the CrewAI Surface Mapper Agent."""
+    model_name = model or os.getenv("MAPPER_MODEL")
+    if not model_name:
+        raise ValueError("MAPPER_MODEL environment variable is not configured")
     key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    llm = LLM(model=model, api_key=key, temperature=0.1)
+    llm = LLM(model=model_name, api_key=key, temperature=0.1)
 
     return Agent(
         role="Distributed Systems Reliability Architect",
@@ -132,7 +135,7 @@ def run_surface_mapper(
     force_refresh: bool = False,
     cache_path: Optional[Path] = None,
     store_in_db: bool = True,
-    model: str = "gemini/gemini-3.8-flash",
+    model: Optional[str] = None,
 ) -> tuple[list[Proposition], ValidationReport, dict[str, Any]]:
     """
     Executes the Surface Mapper workflow:
@@ -143,6 +146,9 @@ def run_surface_mapper(
     5. Caches validated propositions on disk.
     6. Persists propositions in SurveyOps internal PostgreSQL.
     """
+    model_name = model or os.getenv("MAPPER_MODEL")
+    if not model_name:
+        raise ValueError("MAPPER_MODEL environment variable is not configured")
     app_dir = Path(target_app_dir)
     graph = build_target_app_graph(app_dir)
     spec = parse_system_specs(app_dir)
@@ -189,7 +195,7 @@ def run_surface_mapper(
 
     # 2. Run CrewAI agent
     callbacks = SurfaceMapperCallbackHandler()
-    agent = build_surface_mapper_agent(model=model, callbacks=callbacks)
+    agent = build_surface_mapper_agent(model=model_name, callbacks=callbacks)
     task = create_mapping_task(agent, graph, spec)
 
     crew = Crew(

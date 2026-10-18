@@ -56,17 +56,32 @@ Last updated: 2026-10-17
   - Structured callbacks (`surveyops/agents/surface_mapper/callbacks.py`): logs task execution, summary, and latency as structured JSON.
   - Mapper recall evaluation: achieves 100% recall (5/5) against planned faults from `docs/07-EVALUATION.md` (connection pool exhaustion, retry storm without backoff, missing DB index / N+1, race condition in idempotency, pagination off by one).
   - Test suite expanded to 88 tests (`pytest tests/ -v` all passing: 8 tool unit tests, 7 mapper guardrail/storage/callback/recall tests).
+- Model configuration and DeepSeek fallback policy configured:
+  - Added Decision 19 to `docs/DECISIONS.md`: Using Gemini for now; DeepSeek is fallback with explicit triggers (billing/rate limits or Diagnostician structured output failure).
+  - Configured per-agent environment variables (`MAPPER_MODEL`, `DIAGNOSTICIAN_MODEL`, `REMEDIATOR_MODEL`, `BASELINE_MODEL`) across `.env.example` and `.env` with no hardcoded model strings.
+  - Test suite passes cleanly (91 tests passing).
+
+- Step 6 completed (Diagnostician LoopAgent):
+  - Google ADK `LoopAgent` in `surveyops/agents/diagnostician/`: hypothesis & experiment selector (`LlmAgent`), deterministic `A2ARunnerDispatcherAgent`, evidence ledger evaluator (`LlmAgent`), and deterministic `ExitDecisionAgent`.
+  - Pure Python code exit conditions in `exit_logic.py`: enforces confidence threshold ($\ge 0.80$), margin threshold ($\ge 0.20$), and completion of at least one disconfirming experiment. Hard iteration cap `MAX_LOOP_ITERATIONS`.
+  - Falsification guardrails (`falsification.py`): rejects requests without `disconfirming_if`, invalid metrics templates, disallowed services/endpoints, or out-of-bound burst parameters prior to network dispatch.
+  - A2A interop: sends validated `ExperimentRequest` to Runner on port 8005; dispatches `DiagnosisResult` on `root_cause` to stub Remediator on port 8006 without crashing on transport failure.
+  - Security & prompt hardening: log text flagged `contains_untrusted_text` encapsulated in `<UNTRUSTED_SYSTEM_DATA>` XML tags with explicit passive data instructions.
+  - Callbacks & Observability: structured JSON logging across before/after agent, model, and tool callbacks; `TokenUsageTracker` for incident cost reporting; adaptive backoff for 429/503 errors; disk cache (`diagnostician_cache.json`) for token conservation.
+  - Background trigger: wired `/investigate` endpoint in `surveyops/api/main.py` to trigger Diagnostician asynchronously and auto-close incident in `finally` block.
+  - Test suite expanded to 106 tests (`pytest tests/ -v` all passing): 15 unit tests covering exit logic, falsification, malformed LLM outputs, Runner failures, untrusted log delimiters, seeding, and background trigger.
+  - Live evaluation: 5 live runs executed against target application under active connection pool exhaustion fault with ground truth comparison performed post-run.
 
 ## In progress
-- (Nothing currently blocked or in flight)
+- None
 
 ## Blocked
 - None
 
 ## Next 3
-1. Diagnostician LoopAgent implementation (ADK)
-2. Cross-framework A2A link (Diagnostician -> Remediator)
-3. Remediator implementation (CrewAI)
+1. Real Remediator agent implementation (CrewAI)
+2. Remediator regression testing & PR generation to GitHub
+3. End-to-end evaluation benchmark across full fault catalog
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

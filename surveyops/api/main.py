@@ -5,6 +5,7 @@ Includes incident deduplication: one open incident per (service, endpoint).
 No LLM calls. No agent startup. Step 3 stub.
 """
 
+import asyncio
 from datetime import datetime, timezone
 import json
 import logging
@@ -306,6 +307,36 @@ def post_close_incident(
     raise HTTPException(status_code=400, detail="Must provide incident_id or both service and endpoint")
 
 
+ENABLE_BACKGROUND_DIAGNOSTICIAN = os.environ.get("ENABLE_BACKGROUND_DIAGNOSTICIAN", "false").lower() in ("true", "1")
+
+
+async def _run_diagnostician_background(incident_id: str, payload: InvestigatePayload) -> None:
+    """Runs Diagnostician in the background and closes the incident in a finally block."""
+    logger.info(
+        "Starting background Diagnostician run",
+        extra={"extra_fields": {"incident_id": incident_id, "endpoint": payload.endpoint}},
+    )
+    try:
+        from surveyops.agents.diagnostician import run_diagnostician
+        diagnosis = await run_diagnostician(incident=payload, incident_id=incident_id)
+        logger.info(
+            "Diagnostician run completed",
+            extra={"extra_fields": {"incident_id": incident_id, "outcome": diagnosis.outcome.value}},
+        )
+    except Exception as exc:
+        logger.error(
+            f"Diagnostician background run failed for {incident_id}: {exc}",
+            extra={"extra_fields": {"incident_id": incident_id, "error": str(exc)}},
+            exc_info=True,
+        )
+    finally:
+        closed = dedup_store.close_incident_by_id(incident_id)
+        logger.info(
+            "Closed incident in finally block",
+            extra={"extra_fields": {"incident_id": incident_id, "closed": closed}},
+        )
+
+
 @app.post("/investigate", status_code=200)
 async def investigate(
     request: Request,
@@ -315,6 +346,7 @@ async def investigate(
     """
     Receives Alertmanager webhook. Checks shared secret. Parses firing alerts into
     InvestigatePayload (symptom only). Deduplicates by (service, endpoint).
+    Starts Diagnostician in background for newly opened incidents.
     """
     # 1. Auth check
     _verify_auth(x_shared_secret, authorization)
@@ -332,7 +364,7 @@ async def investigate(
             "version": raw_body.get("version"),
             "status": raw_body.get("status"),
             "num_alerts": len(raw_body.get("alerts", [])),
-            "group_labels": raw_body.get("groupLabels", {}),
+            "groupLabels": raw_body.get("groupLabels", {}),
         }},
     )
 
@@ -393,8 +425,13 @@ async def investigate(
         accepted_item["incident_id"] = incident_id
         accepted.append(accepted_item)
 
+        # Trigger background Diagnostician run (Requirement 9)
+        if ENABLE_BACKGROUND_DIAGNOSTICIAN:
+            asyncio.create_task(_run_diagnostician_background(incident_id, validated))
+
     return {
         "accepted": len(accepted),
         "payloads": accepted,
         "ignored_duplicates": ignored_duplicates,
     }
+

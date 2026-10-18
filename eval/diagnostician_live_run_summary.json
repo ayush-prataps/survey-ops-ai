@@ -1,0 +1,136 @@
+{
+  "fault_id": "fault-111b3d6f",
+  "ground_truth": {
+    "fault_id": "fault-111b3d6f",
+    "failure_mode": "connection_pool_exhaustion",
+    "injection_type": "toxiproxy_latency",
+    "target_service": "payment",
+    "target_proxy": "payment-postgres",
+    "params": {
+      "latency_ms": 2500,
+      "jitter_ms": 100,
+      "stream": "upstream"
+    },
+    "timestamp": "2026-10-18T08:31:39.204951+00:00"
+  },
+  "sample_diagnosis": {
+    "incident_id": "inc-unknown",
+    "outcome": "root_cause",
+    "root_cause": "retry_storm_no_backoff",
+    "endpoint": "/payment/charge",
+    "supporting_proposition_id": null,
+    "graph_edge_ref": null,
+    "confidence": 0.85,
+    "ruled_out": [
+      "hyp-novel-rival"
+    ],
+    "iterations_used": 2
+  },
+  "sample_ledger": [
+    {
+      "iteration": 1,
+      "hypothesis_id": "hyp-novel-rival",
+      "evidence_for": [],
+      "evidence_against": [
+        "Connection pool in use is only 4 connections, which is extremely low and disconfirms pool exhaustion."
+      ],
+      "confidence": 0.1,
+      "status": "active"
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "hyp-rival-retry",
+      "evidence_for": [],
+      "evidence_against": [],
+      "confidence": 0.3,
+      "status": "active"
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "hyp-rival-retry",
+      "evidence_for": [
+        "Database logs reveal sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00, indicating intense lock/connection contention and slow queries causing requests to pile up and timeout."
+      ],
+      "evidence_against": [],
+      "confidence": 0.85,
+      "status": "active"
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "hyp-novel-rival",
+      "evidence_for": [],
+      "evidence_against": [
+        "Logs confirm queue pool exhaustion / timeout errors occurring due to database queue pool limit of 5 being reached under high request latency and locking."
+      ],
+      "confidence": 0.05,
+      "status": "ruled_out"
+    }
+  ],
+  "runs": [
+    {
+      "run": 1,
+      "incident_id": "inc-live-1-fault-",
+      "outcome": "root_cause",
+      "root_cause": "retry_storm_no_backoff",
+      "confidence": 0.85,
+      "iterations": 2,
+      "prompt_tokens": 10269,
+      "completion_tokens": 1422,
+      "total_tokens": 11691,
+      "wall_time_s": 7.8,
+      "ledger_count": 4
+    },
+    {
+      "run": 2,
+      "incident_id": "inc-live-2-fault-",
+      "outcome": "root_cause",
+      "root_cause": "missing_index_n_plus_1",
+      "confidence": 0.85,
+      "iterations": 3,
+      "prompt_tokens": 12397,
+      "completion_tokens": 2320,
+      "total_tokens": 14717,
+      "wall_time_s": 13.43,
+      "ledger_count": 5
+    },
+    {
+      "run": 3,
+      "incident_id": "inc-live-3-fault-",
+      "outcome": "abstained",
+      "root_cause": null,
+      "confidence": null,
+      "iterations": 2,
+      "prompt_tokens": 5397,
+      "completion_tokens": 1546,
+      "total_tokens": 6943,
+      "wall_time_s": 7.73,
+      "ledger_count": 4
+    },
+    {
+      "run": 4,
+      "incident_id": "inc-live-4-fault-",
+      "outcome": "abstained",
+      "root_cause": null,
+      "confidence": null,
+      "iterations": 2,
+      "prompt_tokens": 5297,
+      "completion_tokens": 1506,
+      "total_tokens": 6803,
+      "wall_time_s": 7.65,
+      "ledger_count": 4
+    },
+    {
+      "run": 5,
+      "incident_id": "inc-live-5-fault-",
+      "outcome": "abstained",
+      "root_cause": null,
+      "confidence": null,
+      "iterations": 2,
+      "prompt_tokens": 5477,
+      "completion_tokens": 1570,
+      "total_tokens": 7047,
+      "wall_time_s": 8.23,
+      "ledger_count": 4
+    }
+  ]
+}
