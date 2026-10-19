@@ -72,7 +72,14 @@ class LLMCache:
             else:
                 schema_name = str(schema)
 
-        raw = f"{request.model}|{schema_name}|{sys_inst}|{'|'.join(content_strs)}"
+        # Determine mode: tool_call vs json_schema vs plain_json
+        has_tools = bool(
+            getattr(request, "tools", None)
+            or (request.config and hasattr(request.config, "tools") and request.config.tools)
+        )
+        mode = "tool_call" if has_tools else ("json_schema" if schema_name else "plain_json")
+
+        raw = f"{request.model}|{mode}|{schema_name}|{sys_inst}|{'|'.join(content_strs)}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def get_cached_response(self, request: LlmRequest) -> LlmResponse | None:
@@ -129,6 +136,10 @@ class LLMCache:
         }
         self._save()
         logger.info(f"Recorded response in LLM cache for key {key[:12]}")
+
+    def clear(self) -> None:
+        self._cache = {}
+        self._save()
 
 
 global_llm_cache = LLMCache()

@@ -11,3 +11,6 @@ python-dotenv
 mcp>=1.2.0,<2.0.0
 # PostgreSQL driver for SurveyOps internal propositions & pgvector storage
 psycopg2-binary>=2.9.10
+# Model connector used by ADK and CrewAI, not an agent framework, never imported in our own code
+litellm
+

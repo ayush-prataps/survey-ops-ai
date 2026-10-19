@@ -1,7 +1,7 @@
 {
-  "fault_id": "fault-111b3d6f",
+  "fault_id": "fault-c0cfc613",
   "ground_truth": {
-    "fault_id": "fault-111b3d6f",
+    "fault_id": "fault-c0cfc613",
     "failure_mode": "connection_pool_exhaustion",
     "injection_type": "toxiproxy_latency",
     "target_service": "payment",
@@ -11,59 +11,120 @@
       "jitter_ms": 100,
       "stream": "upstream"
     },
-    "timestamp": "2026-10-18T08:31:39.204951+00:00"
+    "timestamp": "2026-10-19T11:05:13.335166+00:00"
   },
   "sample_diagnosis": {
     "incident_id": "inc-unknown",
     "outcome": "root_cause",
-    "root_cause": "retry_storm_no_backoff",
+    "root_cause": "connection_pool_exhaustion",
     "endpoint": "/payment/charge",
-    "supporting_proposition_id": null,
-    "graph_edge_ref": null,
-    "confidence": 0.85,
-    "ruled_out": [
-      "hyp-novel-rival"
-    ],
+    "supporting_proposition_id": "SM-007",
+    "graph_edge_ref": "payment.charge_payment() -> db.connection_pool",
+    "confidence": 1.0,
+    "self_reported_confidence": 0.9,
+    "ruled_out": [],
     "iterations_used": 2
   },
   "sample_ledger": [
     {
       "iteration": 1,
-      "hypothesis_id": "hyp-novel-rival",
-      "evidence_for": [],
-      "evidence_against": [
-        "Connection pool in use is only 4 connections, which is extremely low and disconfirms pool exhaustion."
+      "hypothesis_id": "SM-007",
+      "evidence_for": [
+        "[req-inc-live-1-fault--it1-pool:pool_max_in_use] pool_max_in_use=5.0 equals pool_capacity=5.0 \u2014 the payment DB connection pool reached full occupancy at some point in the 1800s incident window, the precondition for connection checkout queuing.",
+        "[req-inc-live-1-fault--it1-pool:pool_utilization_ratio] pool_utilization_ratio=1.0 (100% of capacity at peak), satisfying the leading indicator for SM-007 (connection_pool_exhaustion).",
+        "[req-inc-live-1-fault--it1-pool:service/endpoint] Metric is scoped to service=payment, endpoint=/payment/charge \u2014 the exact path in the alert, so the saturation signal is on the implicated code path (charge_payment() -> db.connection_pool)."
       ],
-      "confidence": 0.1,
-      "status": "active"
+      "evidence_against": [
+        "[req-inc-live-1-fault--it1-pool:pool_in_use] instantaneous pool_in_use=0 at scrape time (2026-10-19T11:05:23Z) \u2014 the pool is not continuously saturated; peak-only saturation is also consistent with short nested-transaction bursts or a brief spike rather than sustained exhaustion.",
+        "[req-inc-live-1-fault--it1-pool:results] Only a single gauge sample with max is returned; no connection checkout timeout / queue-wait error series was collected, so the second half of the SM-007 signature (queueing/timeout errors) is unverified rather than confirmed."
+      ],
+      "confidence": 0.6,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use remains well below pool_capacity (e.g. utilization under ~80%) throughout the incident window and no connection checkout timeout/queue-wait errors appear for the payment service \u2014 then connection pool exhaustion is disproven and latency must originate from the idempotency path itself (SM-006/SM-008).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (>= 0.80) and pool_max_in_use=5.0 == pool_capacity=5.0 over the 1800s window, so the 'utilization well below capacity throughout the window' clause is false; the conjunction required to disconfirm SM-007 is not satisfied."
     },
     {
       "iteration": 1,
-      "hypothesis_id": "hyp-rival-retry",
-      "evidence_for": [],
-      "evidence_against": [],
-      "confidence": 0.3,
-      "status": "active"
-    },
-    {
-      "iteration": 2,
-      "hypothesis_id": "hyp-rival-retry",
+      "hypothesis_id": "SM-006",
       "evidence_for": [
-        "Database logs reveal sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00, indicating intense lock/connection contention and slow queries causing requests to pile up and timeout."
+        "[req-inc-live-1-fault--it1-pool:pool_max_in_use] Pool reaching capacity implies charge requests were likely holding DB connections concurrently, which is compatible with concurrent identical charges both passing check_idempotency() and executing in parallel before either records completion."
       ],
-      "evidence_against": [],
-      "confidence": 0.85,
-      "status": "active"
+      "evidence_against": [
+        "[req-inc-live-1-fault--it1-pool:pool_in_use] This experiment queried only pool gauges; it produced no idempotency-key or duplicate-charge counts, so there is no direct evidence for or against non-atomic check-then-charge behavior."
+      ],
+      "confidence": 0.3,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use remains well below pool_capacity (e.g. utilization under ~80%) throughout the incident window and no connection checkout timeout/queue-wait errors appear for the payment service \u2014 then connection pool exhaustion is disproven and latency must originate from the idempotency path itself (SM-006/SM-008).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 >= 0.80, so the pool-exhaustion disconfirming condition is not met and this experiment neither confirms nor refutes the idempotency race; no duplicate-charge or transaction-atomicity evidence was produced, so confidence may not be lowered."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-008",
+      "evidence_for": [
+        "[req-inc-live-1-fault--it1-pool:pool_max_in_use] A slow, unindexed idempotency lookup would hold pool connections longer per request, which is a plausible contributor to max_in_use reaching the full capacity of 5.0."
+      ],
+      "evidence_against": [
+        "[req-inc-live-1-fault--it1-pool:results] The observation contains no db.session query metrics (latency, rows examined, index usage) for check_idempotency(), so the mechanism of a degraded scan is neither observed nor excluded."
+      ],
+      "confidence": 0.25,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use remains well below pool_capacity (e.g. utilization under ~80%) throughout the incident window and no connection checkout timeout/queue-wait errors appear for the payment service \u2014 then connection pool exhaustion is disproven and latency must originate from the idempotency path itself (SM-006/SM-008).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 >= 0.80, so the disconfirming condition is not met; no query-plan, rows-examined, or check_idempotency query-latency data was returned, so SM-008 is untested and confidence may not be lowered."
     },
     {
       "iteration": 2,
-      "hypothesis_id": "hyp-novel-rival",
-      "evidence_for": [],
-      "evidence_against": [
-        "Logs confirm queue pool exhaustion / timeout errors occurring due to database queue pool limit of 5 being reached under high request latency and locking."
+      "hypothesis_id": "SM-007",
+      "evidence_for": [
+        "[req-inc-live-1-fault--it2-logs:lines] Direct error text: 'sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 (Background on this error at: https://sqlalche.me/e/20/3o7r)' \u2014 the canonical connection checkout / queue-wait signature is present, not absent.",
+        "[req-inc-live-1-fault--it2-logs:lines] Traceback path ties the wait to the charge path in the code graph: '/app/main.py\", line 212, in charge_payment -> existing = check_idempotency(db, req.idempotency_key)' then '/app/main.py\", line 120, in check_idempotency -> return db.execute(stmt).scalar_one_or_none()' -> session._connection_for_bind -> engine.raw_connection -> pool.base._checkout -> pool.impl._do_get raising exc.TimeoutError. Matches the SM-007 edge payment.charge_payment() -> db.connection_pool.",
+        "[req-inc-live-1-fault--it2-logs:lines] The checkout timeout is 5.00s, so blocked charge requests were floored at ~5s waiting for a pooled connection \u2014 a concrete, quantified mechanism for HighP99Latency on /payment/charge.",
+        "[req-inc-live-1-fault--it2-logs:lines] Frames show execution through 'starlette.concurrency.run_in_threadpool' -> 'anyio.to_thread.run_sync', i.e. sync SQLAlchemy sessions in the worker threadpool, so concurrent charge handlers contend for a pool capped at size 5 with overflow 0 \u2014 the structural setup for sustained checkout queuing.",
+        "[req-inc-live-1-fault--it1-pool:pool_max_in_use] Corroborated by the prior gauge: pool_max_in_use=5.0 == pool_capacity=5.0 (pool_utilization_ratio=1.0) in the same 1800s window; the logs convert that peak into demonstrated queuing."
       ],
-      "confidence": 0.05,
-      "status": "ruled_out"
+      "evidence_against": [
+        "[req-inc-live-1-fault--it2-logs:lines_count] lines_count=100 of a requested 300 (truncated=false) and the content is repetitive traceback fragments, so error frequency and the share of /payment/charge requests affected are not quantified; p99 magnitude is inferred from the 5.00s timeout rather than measured.",
+        "[req-inc-live-1-fault--it2-logs:lines] No rows-examined, sequential-scan, or long-query text appears, so what is consuming all 5 connections (long hold times vs. pure volume) is not stated \u2014 the exhaustion mechanism is proven, its upstream amplifier is not."
+      ],
+      "confidence": 0.9,
+      "status": "dominant",
+      "quoted_disconfirming_if": "The logs contain no connection checkout/queue-wait timeouts, no pool-exhaustion messages, and no evidence that /payment/charge requests waited on db.connection_pool during the window \u2014 while instead showing slow check_idempotency() lookups (high rows examined / sequential scans, e.g. SM-008) or duplicate-charge / idempotency-conflict violations (SM-006). In that case connection_pool_exhaustion is disproven as the latency cause and must be downgraded below the idempotency-path rivals.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "[req-inc-live-1-fault--it2-logs:lines] contains the explicit pool-exhaustion/checkout-timeout line 'sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00', raised via pool.impl._do_get -> pool.base._checkout -> bind.connect -> session.execute -> check_idempotency (/app/main.py:120) -> charge_payment (/app/main.py:212). The disconfirming_if requires the ABSENCE of such messages plus slow-check_idempotency or duplicate-charge evidence instead; both clauses fail."
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "SM-006",
+      "evidence_for": [
+        "[req-inc-live-1-fault--it2-logs:lines] The timeout is raised at check_idempotency (/app/main.py:120), the exact call site named by SM-006; if concurrent identical requests each hold a connection across a non-atomic check-then-charge window, they would occupy the 5-connection pool and produce precisely this checkout queuing."
+      ],
+      "evidence_against": [
+        "[req-inc-live-1-fault--it2-logs:lines] No duplicate-key, unique-constraint-violation, or 'idempotency conflict' text appears in the returned lines; the raised exception is a pool checkout timeout, not an integrity error.",
+        "[req-inc-live-1-fault--it2-logs:lines] The observed cost is time spent waiting to acquire a connection, fully explained by SM-007 alone; a genuine idempotency race would still require duplicate-charge evidence, which is absent."
+      ],
+      "confidence": 0.3,
+      "status": "active",
+      "quoted_disconfirming_if": "The logs contain no connection checkout/queue-wait timeouts, no pool-exhaustion messages, and no evidence that /payment/charge requests waited on db.connection_pool during the window \u2014 while instead showing slow check_idempotency() lookups (high rows examined / sequential scans, e.g. SM-008) or duplicate-charge / idempotency-conflict violations (SM-006). In that case connection_pool_exhaustion is disproven as the latency cause and must be downgraded below the idempotency-path rivals.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "[req-inc-live-1-fault--it2-logs:lines] shows an explicit 'QueuePool limit of size 5 overflow 0 reached, connection timed out' and no duplicate-charge or unique-constraint-violation messages, so the pool-exhaustion disconfirming condition is not met and this hypothesis is neither confirmed nor refuted; confidence held at 0.30."
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "SM-008",
+      "evidence_for": [
+        "[req-inc-live-1-fault--it2-logs:lines] The connection is requested by check_idempotency's db.execute (/app/main.py:120); a slow unindexed lookup there would lengthen per-request connection hold time and is a plausible reason all 5 connections were occupied."
+      ],
+      "evidence_against": [
+        "[req-inc-live-1-fault--it2-logs:lines] No slow-query, sequential-scan, high-rows-examined, or statement-duration lines are present, so the degraded-lookup signature predicted by SM-008 was not observed.",
+        "[req-inc-live-1-fault--it2-logs:lines] The traceback terminates in 'pool.impl._do_get' raising exc.TimeoutError before any statement executes, so these requests never ran the idempotency SELECT \u2014 this evidence neither supports nor excludes an unindexed-lookup cost."
+      ],
+      "confidence": 0.25,
+      "status": "active",
+      "quoted_disconfirming_if": "The logs contain no connection checkout/queue-wait timeouts, no pool-exhaustion messages, and no evidence that /payment/charge requests waited on db.connection_pool during the window \u2014 while instead showing slow check_idempotency() lookups (high rows examined / sequential scans, e.g. SM-008) or duplicate-charge / idempotency-conflict violations (SM-006). In that case connection_pool_exhaustion is disproven as the latency cause and must be downgraded below the idempotency-path rivals.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "[req-inc-live-1-fault--it2-logs:lines] contains an explicit 'QueuePool limit of size 5 overflow 0 reached' timeout and no slow-query/rows-examined/query-plan lines, so the disconfirming condition is not met and confidence is held at 0.25."
     }
   ],
   "runs": [
@@ -71,66 +132,86 @@
       "run": 1,
       "incident_id": "inc-live-1-fault-",
       "outcome": "root_cause",
-      "root_cause": "retry_storm_no_backoff",
-      "confidence": 0.85,
+      "root_cause": "connection_pool_exhaustion",
+      "confidence": 1.0,
+      "self_reported_confidence": 0.9,
       "iterations": 2,
-      "prompt_tokens": 10269,
-      "completion_tokens": 1422,
-      "total_tokens": 11691,
-      "wall_time_s": 7.8,
-      "ledger_count": 4
+      "prompt_tokens": 86302,
+      "completion_tokens": 14433,
+      "total_tokens": 100735,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "wall_time_s": 68.89,
+      "ledger_count": 6
     },
     {
       "run": 2,
       "incident_id": "inc-live-2-fault-",
       "outcome": "root_cause",
-      "root_cause": "missing_index_n_plus_1",
-      "confidence": 0.85,
+      "root_cause": "connection_pool_exhaustion",
+      "confidence": 0.84,
+      "self_reported_confidence": 0.85,
       "iterations": 3,
-      "prompt_tokens": 12397,
-      "completion_tokens": 2320,
-      "total_tokens": 14717,
-      "wall_time_s": 13.43,
-      "ledger_count": 5
+      "prompt_tokens": 90831,
+      "completion_tokens": 15250,
+      "total_tokens": 106081,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "wall_time_s": 72.19,
+      "ledger_count": 9
     },
     {
       "run": 3,
       "incident_id": "inc-live-3-fault-",
-      "outcome": "abstained",
-      "root_cause": null,
-      "confidence": null,
-      "iterations": 2,
-      "prompt_tokens": 5397,
-      "completion_tokens": 1546,
-      "total_tokens": 6943,
-      "wall_time_s": 7.73,
-      "ledger_count": 4
+      "outcome": "root_cause",
+      "root_cause": "connection_pool_exhaustion",
+      "confidence": 0.8,
+      "self_reported_confidence": 0.68,
+      "iterations": 1,
+      "prompt_tokens": 22678,
+      "completion_tokens": 6078,
+      "total_tokens": 28756,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "wall_time_s": 26.82,
+      "ledger_count": 3
     },
     {
       "run": 4,
       "incident_id": "inc-live-4-fault-",
-      "outcome": "abstained",
-      "root_cause": null,
-      "confidence": null,
-      "iterations": 2,
-      "prompt_tokens": 5297,
-      "completion_tokens": 1506,
-      "total_tokens": 6803,
-      "wall_time_s": 7.65,
-      "ledger_count": 4
+      "outcome": "root_cause",
+      "root_cause": "connection_pool_exhaustion",
+      "confidence": 0.8,
+      "self_reported_confidence": 0.68,
+      "iterations": 1,
+      "prompt_tokens": 23673,
+      "completion_tokens": 6788,
+      "total_tokens": 30461,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "wall_time_s": 29.78,
+      "ledger_count": 3
     },
     {
       "run": 5,
       "incident_id": "inc-live-5-fault-",
-      "outcome": "abstained",
-      "root_cause": null,
-      "confidence": null,
+      "outcome": "root_cause",
+      "root_cause": "connection_pool_exhaustion",
+      "confidence": 0.85,
+      "self_reported_confidence": 0.93,
       "iterations": 2,
-      "prompt_tokens": 5477,
-      "completion_tokens": 1570,
-      "total_tokens": 7047,
-      "wall_time_s": 8.23,
-      "ledger_count": 4
+      "prompt_tokens": 37165,
+      "completion_tokens": 10818,
+      "total_tokens": 47983,
+      "served_models": [
+        "deepseek-flash"
+      ],
+      "wall_time_s": 49.35,
+      "ledger_count": 3
     }
   ]
 }

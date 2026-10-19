@@ -10,6 +10,9 @@ class LedgerEntry(BaseModel):
     evidence_against: list[str] = Field(default_factory=list)
     confidence: float
     status: str  # active | ruled_out | dominant
+    quoted_disconfirming_if: str | None = None
+    disconfirming_condition_met: bool = False
+    disconfirming_justification: str | None = None
 
 
 class Outcome(str, Enum):
@@ -27,5 +30,6 @@ class DiagnosisResult(BaseModel):
     supporting_proposition_id: str | None = None
     graph_edge_ref: str | None = None
     confidence: float | None = None
+    self_reported_confidence: float | None = None
     ruled_out: list[str] = Field(default_factory=list)
     iterations_used: int

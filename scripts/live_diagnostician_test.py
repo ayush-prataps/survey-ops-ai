@@ -24,6 +24,7 @@ import uvicorn
 from dotenv import load_dotenv
 
 load_dotenv()
+os.environ["SURVEYOPS_LLM_CACHE_ENABLED"] = "false"
 
 # Add repo root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -64,8 +65,14 @@ def generate_payment_traffic():
 
 
 async def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--runs", type=int, default=5, help="Number of runs")
+    args, _ = parser.parse_known_args()
+    num_runs = args.runs
+
     print("=================================================================")
-    print("  SURVEYOPS LIVE DIAGNOSTICIAN EVALUATION (5 RUNS)               ")
+    print(f"  SURVEYOPS LIVE DIAGNOSTICIAN EVALUATION ({num_runs} RUNS)      ")
     print("=================================================================")
 
     # 1. Start Remediator A2A stub
@@ -96,7 +103,7 @@ async def main():
     generate_payment_traffic()
     time.sleep(2.0)
 
-    # 5. Execute 5 live Diagnostician runs
+    # 5. Execute Diagnostician runs
     results = []
     sample_ledger = None
     sample_diagnosis = None
@@ -110,8 +117,8 @@ async def main():
         window_start=datetime.now(timezone.utc),
     )
 
-    print("\n[5] Executing 5 Diagnostician runs...")
-    for run_idx in range(1, 6):
+    print(f"\n[5] Executing {num_runs} Diagnostician run(s)...")
+    for run_idx in range(1, num_runs + 1):
         inc_id = f"inc-live-{run_idx}-{fault_id[:6] if fault_id else '000000'}"
         start_time = time.perf_counter()
 
@@ -133,20 +140,22 @@ async def main():
             "outcome": diagnosis.outcome.value,
             "root_cause": diagnosis.root_cause.value if diagnosis.root_cause else None,
             "confidence": diagnosis.confidence,
+            "self_reported_confidence": diagnosis.self_reported_confidence,
             "iterations": diagnosis.iterations_used,
             "prompt_tokens": usage["prompt_tokens"],
             "completion_tokens": usage["completion_tokens"],
             "total_tokens": usage["total_tokens"],
+            "served_models": usage.get("served_models", []),
             "wall_time_s": wall_time,
             "ledger_count": len(ledger_entries),
         })
-        print(f"  Run {run_idx}: Outcome={diagnosis.outcome.value}, RootCause={diagnosis.root_cause}, Iterations={diagnosis.iterations_used}, Tokens={usage['total_tokens']}, Time={wall_time}s")
+        print(f"  Run {run_idx}: Outcome={diagnosis.outcome.value}, RootCause={diagnosis.root_cause}, CalibratedConf={diagnosis.confidence}, SelfReportedConf={diagnosis.self_reported_confidence}, Iterations={diagnosis.iterations_used}, Tokens={usage['total_tokens']}, Time={wall_time}s")
 
         if run_idx == 1:
             sample_diagnosis = diagnosis
             sample_ledger = ledger_entries
 
-        if run_idx < 5:
+        if run_idx < num_runs:
             print("    [Pacing] Waiting 10s before next run...")
             await asyncio.sleep(10.0)
 

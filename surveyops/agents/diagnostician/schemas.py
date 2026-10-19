@@ -91,4 +91,5 @@ class ExitDecision(BaseModel):
     outcome: Outcome
     top_hypothesis: HypothesisItem | None = None
     confidence: float | None = None
+    self_reported_confidence: float | None = None
     reason: str

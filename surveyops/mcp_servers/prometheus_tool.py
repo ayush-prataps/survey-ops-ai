@@ -102,13 +102,33 @@ def execute_prometheus_query(
     req_rate: float | None = None
     req_count: float | None = None
     pool_in_use: float | None = None
+    pool_max_in_use: float | None = None
     pool_capacity: float | None = None
+    pool_utilization_ratio: float | None = None
+
+    if template == "pool_in_use":
+        # 1. Current value
+        in_use_res = _query_instant("payment_db_pool_in_use_connections")
+        pool_in_use = _extract_scalar_value(in_use_res)
+
+        # 2. Max over window
+        max_q = f"max_over_time(payment_db_pool_in_use_connections[{range_s}s])"
+        max_res = _query_instant(max_q)
+        pool_max_in_use = _extract_scalar_value(max_res)
+
+        # 3. Capacity
+        cap_res = _query_instant("payment_db_pool_capacity")
+        pool_capacity = _extract_scalar_value(cap_res)
+
+        # 4. Ratio to capacity
+        effective_in_use = pool_max_in_use if pool_max_in_use is not None else pool_in_use
+        if effective_in_use is not None and pool_capacity and pool_capacity > 0:
+            pool_utilization_ratio = round(effective_in_use / pool_capacity, 4)
 
     # When querying p99_latency, bundle request rate/count and DB pool gauges
-    if template == "p99_latency":
+    elif template == "p99_latency":
         # 1. Request rate & request count
         selector = f'handler="{endpoint}"' if endpoint else ""
-        selector_comma = f'handler="{endpoint}",' if endpoint else ""
         rate_q = f"sum by (handler) (rate(http_requests_total{{{selector}}}[{range_s}s]))"
         inc_q = f"sum by (handler) (increase(http_requests_total{{{selector}}}[{range_s}s]))"
 
@@ -119,9 +139,17 @@ def execute_prometheus_query(
 
         # 2. Pool gauges (immediate indicators of exhaustion before requests timeout)
         in_use_res = _query_instant("payment_db_pool_in_use_connections")
+        max_q = f"max_over_time(payment_db_pool_in_use_connections[{range_s}s])"
+        max_res = _query_instant(max_q)
         cap_res = _query_instant("payment_db_pool_capacity")
+
         pool_in_use = _extract_scalar_value(in_use_res)
+        pool_max_in_use = _extract_scalar_value(max_res)
         pool_capacity = _extract_scalar_value(cap_res)
+
+        effective_in_use = pool_max_in_use if pool_max_in_use is not None else pool_in_use
+        if effective_in_use is not None and pool_capacity and pool_capacity > 0:
+            pool_utilization_ratio = round(effective_in_use / pool_capacity, 4)
 
     return PrometheusQueryReturn(
         template=template,
@@ -133,6 +161,8 @@ def execute_prometheus_query(
         request_rate=req_rate,
         request_count=req_count,
         pool_in_use=pool_in_use,
+        pool_max_in_use=pool_max_in_use,
         pool_capacity=pool_capacity,
+        pool_utilization_ratio=pool_utilization_ratio,
         status="success",
     )

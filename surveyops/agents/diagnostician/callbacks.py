@@ -45,20 +45,23 @@ class TokenUsageTracker:
     def __init__(self) -> None:
         self._usage: dict[str, dict[str, int]] = {}
 
-    def add_tokens(self, incident_id: str, prompt_tokens: int, completion_tokens: int, total_tokens: int | None = None) -> None:
+    def add_tokens(self, incident_id: str, prompt_tokens: int, completion_tokens: int, total_tokens: int | None = None, served_model: str | None = None) -> None:
         if incident_id not in self._usage:
             self._usage[incident_id] = {
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "total_tokens": 0,
+                "served_models": [],
             }
         tot = total_tokens if total_tokens is not None else (prompt_tokens + completion_tokens)
         self._usage[incident_id]["prompt_tokens"] += prompt_tokens
         self._usage[incident_id]["completion_tokens"] += completion_tokens
         self._usage[incident_id]["total_tokens"] += tot
+        if served_model and served_model not in self._usage[incident_id].get("served_models", []):
+            self._usage[incident_id].setdefault("served_models", []).append(served_model)
 
-    def get_usage(self, incident_id: str) -> dict[str, int]:
-        return self._usage.get(incident_id, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+    def get_usage(self, incident_id: str) -> dict[str, Any]:
+        return self._usage.get(incident_id, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "served_models": []})
 
     def reset(self, incident_id: str | None = None) -> None:
         if incident_id:
@@ -141,25 +144,34 @@ def diagnostician_after_model_callback(ctx: Context, response: LlmResponse) -> L
         completion_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
         total_tokens = getattr(response.usage_metadata, "total_token_count", 0) or (prompt_tokens + completion_tokens)
 
-    token_tracker.add_tokens(incident_id, prompt_tokens, completion_tokens, total_tokens)
-
     call_id = f"{incident_id}-{iteration}"
+    req = _model_call_requests.pop(call_id, None)
+    served_model = (
+        getattr(response, "model_version", None)
+        or getattr(response, "model", None)
+        or (req.model if req else None)
+        or "deepseek/deepseek-flash"
+    )
+
+    token_tracker.add_tokens(incident_id, prompt_tokens, completion_tokens, total_tokens, served_model=served_model)
+
     start_time = _model_call_start_times.pop(call_id, None)
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2) if start_time else None
 
     # Record to cache
-    req = _model_call_requests.pop(call_id, None)
     if req and response:
         global_llm_cache.record_response(req, response)
 
     _log_event("after_model", {
         "incident_id": incident_id,
         "iteration": iteration,
+        "model": served_model,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
         "latency_ms": latency_ms,
     })
+    print(f"\n[SERVED MODEL API RESPONSE] Incident: {incident_id} Iteration: {iteration} | Model: {served_model} | Tokens: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens} | Latency: {latency_ms}ms")
 
     return None
 

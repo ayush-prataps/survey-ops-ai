@@ -12,7 +12,9 @@ class PrometheusQueryReturn(BaseModel):
     request_rate: float | None = None
     request_count: float | None = None
     pool_in_use: float | None = None
+    pool_max_in_use: float | None = None
     pool_capacity: float | None = None
+    pool_utilization_ratio: float | None = None
     status: str = "success"
 
 

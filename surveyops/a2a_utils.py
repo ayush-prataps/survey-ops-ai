@@ -34,7 +34,9 @@ def from_a2a_text(text: str, model_cls: type[T]) -> A2ADecodeResult[T]:
     if not text or not text.strip():
         return A2ADecodeResult(error=f"Empty text payload for {model_cls.__name__}")
     try:
-        val = model_cls.model_validate_json(text)
+        from surveyops.llm_utils import extract_json_from_text
+        cleaned = extract_json_from_text(text)
+        val = model_cls.model_validate_json(cleaned)
         return A2ADecodeResult(value=val)
     except (ValidationError, Exception) as exc:
         return A2ADecodeResult(error=f"A2A validation error for {model_cls.__name__}: {exc}")

@@ -70,6 +70,14 @@ def store_propositions(
         conn.close()
 
 
+def normalize_endpoint(endpoint: str | None) -> str:
+    """Normalizes endpoint by stripping HTTP method prefixes (e.g., 'POST /orders' -> '/orders')."""
+    if not endpoint:
+        return ""
+    parts = endpoint.strip().split()
+    return parts[-1] if len(parts) > 1 else parts[0]
+
+
 def load_propositions(
     endpoint: Optional[str] = None,
     failure_mode: Optional[str] = None,
@@ -83,9 +91,10 @@ def load_propositions(
             query = "SELECT proposition_id, endpoint, failure_mode, justification, predicted_signal, graph_edge_ref FROM propositions"
             conditions = []
             params = []
-            if endpoint:
-                conditions.append("endpoint = %s")
-                params.append(endpoint)
+            norm_ep = normalize_endpoint(endpoint) if endpoint else None
+            if endpoint and norm_ep:
+                conditions.append("(endpoint = %s OR endpoint = %s OR endpoint LIKE %s)")
+                params.extend([endpoint, f"POST {norm_ep}", f"%{norm_ep}"])
             if failure_mode:
                 conditions.append("failure_mode = %s")
                 params.append(failure_mode)
@@ -99,16 +108,17 @@ def load_propositions(
 
             results = []
             for r in rows:
-                results.append(
-                    Proposition(
-                        proposition_id=r[0],
-                        endpoint=r[1],
-                        failure_mode=FailureMode(r[2]),
-                        justification=r[3],
-                        predicted_signal=r[4],
-                        graph_edge_ref=r[5],
-                    )
+                p = Proposition(
+                    proposition_id=r[0],
+                    endpoint=r[1],
+                    failure_mode=FailureMode(r[2]),
+                    justification=r[3],
+                    predicted_signal=r[4],
+                    graph_edge_ref=r[5],
                 )
+                if norm_ep and normalize_endpoint(p.endpoint) != norm_ep:
+                    continue
+                results.append(p)
             return results
     finally:
         conn.close()

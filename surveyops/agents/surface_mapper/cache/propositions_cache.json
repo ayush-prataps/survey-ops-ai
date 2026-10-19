@@ -1,76 +1,156 @@
 {
-  "cache_key": "5d29c42b842ab11aabd11cc70afeb1e2f3ca7ce919881b5bcfa6644774e069ea",
+  "cache_key": "eadc3f04fb2d1b4033e1fdef5d1fefd4c6def1430ee6c9053d064de0e7ce43e4",
   "propositions": [
     {
       "proposition_id": "SM-001",
       "endpoint": "POST /orders",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "Handler acquires database connection before executing synchronous outbound HTTP calls to auth, inventory, and payment, locking pool connections for the duration of external calls.",
-      "predicted_signal": "orders_db_pool_available_connections drops to zero and connection pool checkout timeouts spike during downstream latency.",
+      "justification": "orders.create_order() has both a db.connection_pool edge and synchronous HTTP edges to auth, inventory, and payment; if the handler keeps a pooled connection while waiting on those downstream calls, slow downstreams can hold all connections.",
+      "predicted_signal": "orders POST latency and pool checkout timeouts rise while auth/inventory/payment latency is elevated; active orders pool connections reaches maximum.",
       "graph_edge_ref": "orders.create_order() -> db.connection_pool"
     },
     {
       "proposition_id": "SM-002",
       "endpoint": "POST /orders",
       "failure_mode": "retry_storm_no_backoff",
-      "justification": "Outbound HTTP charge request from order creation coordinates calls without backoff and jitter upon transient downstream failures or network timeouts.",
-      "predicted_signal": "Sudden multiplication of POST /payment/charge request traffic accompanied by payment service 504 and 503 error cascades.",
-      "graph_edge_ref": "orders.create_order() -> payment.charge()"
+      "justification": "orders.create_order() calls auth.verify() synchronously; no graph-level backoff or retry boundary is visible around this cross-service call, so auth verify failures can be retried per order request and amplify load.",
+      "predicted_signal": "GET /auth/verify request rate exceeds POST /orders rate during auth failure; retry count per order exceeds 1.",
+      "graph_edge_ref": "orders.create_order() -> auth.verify()"
     },
     {
       "proposition_id": "SM-003",
       "endpoint": "POST /orders",
       "failure_mode": "retry_storm_no_backoff",
-      "justification": "Order creation orchestrates synchronous inventory reservation without exponential backoff and jitter, magnifying inventory service overload upon initial timeout.",
-      "predicted_signal": "Inventory reserve request rate surges abruptly during transient stock reservation latency spikes.",
-      "graph_edge_ref": "orders.create_order() -> inventory.reserve()"
+      "justification": "orders.create_order() calls payment.charge() synchronously; without a visible backoff or retry boundary, a slow or failing payment charge can cause order retries to re-hit payment and amplify charge traffic.",
+      "predicted_signal": "POST /payment/charge QPS spikes relative to accepted orders; repeated charge attempts for the same order or idempotency key.",
+      "graph_edge_ref": "orders.create_order() -> payment.charge()"
     },
     {
       "proposition_id": "SM-004",
-      "endpoint": "GET /orders",
-      "failure_mode": "pagination_off_by_one",
-      "justification": "Offset and limit boundary calculations in list_orders do not enforce deterministic tie-breaking sort order, causing missed or duplicated items across adjacent pages.",
-      "predicted_signal": "Duplicate entity IDs returned across consecutive page responses or client-side reconciliation discrepancies.",
-      "graph_edge_ref": "orders.list_orders() -> db.session"
+      "endpoint": "POST /orders",
+      "failure_mode": "retry_storm_no_backoff",
+      "justification": "orders.create_order() calls inventory.reserve() synchronously; if reserve fails or times out, order retries without graph-visible backoff can repeatedly hit inventory reservation.",
+      "predicted_signal": "POST /inventory/{item_id}/reserve QPS spikes after reserve latency or failures; multiple reserve attempts for the same order/item.",
+      "graph_edge_ref": "orders.create_order() -> inventory.reserve()"
     },
     {
       "proposition_id": "SM-005",
-      "endpoint": "GET /orders",
-      "failure_mode": "missing_index_n_plus_1",
-      "justification": "Order list query performs full collection iteration or separate entity lookups per returned order row without indexed eager loading.",
-      "predicted_signal": "Database query latency scales linearly with requested page limit size alongside elevated database CPU consumption.",
-      "graph_edge_ref": "orders.list_orders() -> db.session"
+      "endpoint": "POST /orders",
+      "failure_mode": "race_condition_idempotency",
+      "justification": "orders.create_order() invokes payment.charge(); if POST /orders retries or concurrent duplicate submissions are not guarded by an order-level idempotency key before the downstream charge, the payment idempotency check can still be raced.",
+      "predicted_signal": "Multiple payment charge attempts or records for the same order payload or client request identifier.",
+      "graph_edge_ref": "orders.create_order() -> payment.charge()"
     },
     {
       "proposition_id": "SM-006",
       "endpoint": "POST /payment/charge",
       "failure_mode": "race_condition_idempotency",
-      "justification": "Non-atomic idempotency verification executes separately from charge execution, allowing identical concurrent requests to pass the check simultaneously.",
-      "predicted_signal": "Duplicate charge entries recorded with matching idempotency keys in payment records.",
-      "graph_edge_ref": "payment.charge() -> payment.check_idempotency()"
+      "justification": "payment.charge_payment() invokes payment.check_idempotency(); if the idempotency check and charge commit are not atomic or unique-constrained, concurrent identical charge requests can both pass the check before either records completion.",
+      "predicted_signal": "Duplicate charge rows or transactions for a single idempotency key; charge count exceeds unique idempotency key count.",
+      "graph_edge_ref": "payment.charge_payment() -> payment.check_idempotency()"
     },
     {
       "proposition_id": "SM-007",
       "endpoint": "POST /payment/charge",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "Payment processing holds database connection pool resources across multiple database operations, starving incoming charge requests under sustained high throughput.",
-      "predicted_signal": "payment service connection pool saturation metric reaches 100% and connection acquisition wait times increase.",
+      "justification": "payment.charge_payment() uses db.connection_pool and invokes check_idempotency, which itself has pool/session edges; nested or long-lived transaction acquisition during concurrent charges can exhaust the pool.",
+      "predicted_signal": "payment pool active/checked-out connections saturate; checkout timeout errors on POST /payment/charge under concurrency.",
       "graph_edge_ref": "payment.charge_payment() -> db.connection_pool"
     },
     {
       "proposition_id": "SM-008",
+      "endpoint": "POST /payment/charge",
+      "failure_mode": "missing_index_n_plus_1",
+      "justification": "payment.check_idempotency() queries db.session; without a unique or indexed idempotency key, the lookup can scan or degrade under duplicate retries, making idempotency checks progressively slower.",
+      "predicted_signal": "Idempotency lookup time and rows examined rise with charge volume; slow query count on payment idempotency storage.",
+      "graph_edge_ref": "payment.check_idempotency() -> db.session"
+    },
+    {
+      "proposition_id": "SM-009",
+      "endpoint": "GET /orders",
+      "failure_mode": "pagination_off_by_one",
+      "justification": "orders.list_orders() reads through db.session for GET /orders; if list pagination computes offset/page boundaries arithmetically, adjacent pages can overlap or skip rows at page boundaries.",
+      "predicted_signal": "Consecutive GET /orders pages contain duplicate or missing order_id values; returned counts disagree with page size at boundaries.",
+      "graph_edge_ref": "orders.list_orders() -> db.session"
+    },
+    {
+      "proposition_id": "SM-010",
+      "endpoint": "GET /orders",
+      "failure_mode": "missing_index_n_plus_1",
+      "justification": "orders.list_orders() accesses db.session without graph-visible index or pagination constraints; if the handler lazily fetches related order records or scans the orders table for listing, query count or rows scanned scales with result size.",
+      "predicted_signal": "DB query count per GET /orders scales with order count/page size; full scans or N+1 query bursts during list requests.",
+      "graph_edge_ref": "orders.list_orders() -> db.session"
+    },
+    {
+      "proposition_id": "SM-011",
+      "endpoint": "GET /orders",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "orders.list_orders() uses db.connection_pool; slow list queries or N+1 fetches can hold pooled connections for the full response construction, reducing available connections under list traffic.",
+      "predicted_signal": "orders connection pool utilization rises with GET /orders concurrency; checkout awaits/timeouts on list requests.",
+      "graph_edge_ref": "orders.list_orders() -> db.connection_pool"
+    },
+    {
+      "proposition_id": "SM-012",
+      "endpoint": "GET /orders/{order_id}",
+      "failure_mode": "missing_index_n_plus_1",
+      "justification": "orders.get_order() reads via db.session; if order detail serialization lazily loads related line items or payments per order, GET /orders/{order_id} exhibits N+1 queries rather than a fixed query count.",
+      "predicted_signal": "Per-request DB query count for GET /orders/{order_id} grows with number of related order rows; DB latency scales with detail size.",
+      "graph_edge_ref": "orders.get_order() -> db.session"
+    },
+    {
+      "proposition_id": "SM-013",
+      "endpoint": "GET /orders/{order_id}",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "orders.get_order() uses db.connection_pool; slow detail queries or N+1 loading can keep connections checked out longer, especially under high detail-read concurrency.",
+      "predicted_signal": "orders pool checkout timeouts during GET /orders/{order_id} bursts; active connections track detail endpoint latency.",
+      "graph_edge_ref": "orders.get_order() -> db.connection_pool"
+    },
+    {
+      "proposition_id": "SM-014",
       "endpoint": "POST /inventory/{item_id}/reserve",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "High concurrency stock reservation transactions exhaust connection pool allocations during row-level lock contention on hot inventory items.",
-      "predicted_signal": "inventory database pool wait queue duration spikes and HTTP 500 error responses occur due to pool acquisition timeouts.",
+      "justification": "inventory.reserve_stock() uses db.connection_pool; stock reservation likely holds row locks or transactions, so contention or slow reservation logic can exhaust the pool under concurrent reservations.",
+      "predicted_signal": "inventory pool saturation and lock-wait time increase during concurrent reserve calls; checkout timeouts on POST /inventory/{item_id}/reserve.",
       "graph_edge_ref": "inventory.reserve_stock() -> db.connection_pool"
+    },
+    {
+      "proposition_id": "SM-015",
+      "endpoint": "POST /inventory/{item_id}/reserve",
+      "failure_mode": "race_condition_idempotency",
+      "justification": "inventory.reserve_stock() accesses db.session without a graph-visible idempotency guard; if POST /inventory/{item_id}/reserve is retried or duplicated concurrently, the same logical reservation can execute more than once.",
+      "predicted_signal": "Reserved quantity exceeds requested quantity for the same order/idempotency key; duplicate inventory reservation rows.",
+      "graph_edge_ref": "inventory.reserve_stock() -> db.session"
+    },
+    {
+      "proposition_id": "SM-016",
+      "endpoint": "GET /inventory/{item_id}",
+      "failure_mode": "missing_index_n_plus_1",
+      "justification": "inventory.get_item() accesses db.session; if the item lookup lacks an index on the filter or lazily loads related stock records, GET /inventory/{item_id} can scan or issue N+1 queries.",
+      "predicted_signal": "inventory item read latency and rows examined rise with table size; query count per GET /inventory/{item_id} exceeds a constant.",
+      "graph_edge_ref": "inventory.get_item() -> db.session"
+    },
+    {
+      "proposition_id": "SM-017",
+      "endpoint": "GET /inventory/{item_id}",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "inventory.get_item() uses db.connection_pool; high item-read volume or a slow scan/N+1 pattern can hold pooled connections and reduce capacity.",
+      "predicted_signal": "inventory pool utilization correlates with GET /inventory/{item_id} QPS/latency; checkout timeouts during read bursts.",
+      "graph_edge_ref": "inventory.get_item() -> db.connection_pool"
+    },
+    {
+      "proposition_id": "SM-018",
+      "endpoint": "GET /auth/verify",
+      "failure_mode": "retry_storm_no_backoff",
+      "justification": "orders.create_order() calls auth.verify() synchronously; if auth verification is slow or unavailable and orders retries without a visible backoff boundary, GET /auth/verify receives amplified repeated traffic.",
+      "predicted_signal": "GET /auth/verify QPS rises above POST /orders QPS during auth failures; repeated verify attempts per order.",
+      "graph_edge_ref": "orders.create_order() -> auth.verify()"
     }
   ],
   "dropped": [],
   "token_usage": {
-    "total_tokens": 5811,
-    "prompt_tokens": 3485,
-    "completion_tokens": 2326
+    "total_tokens": 15317,
+    "prompt_tokens": 2808,
+    "completion_tokens": 12509
   },
   "metadata": {
     "graph_nodes": 31,

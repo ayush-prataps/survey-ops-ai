@@ -39,11 +39,13 @@ def build_surface_mapper_agent(
     api_key: Optional[str] = None,
     callbacks: Optional[SurfaceMapperCallbackHandler] = None,
 ) -> Agent:
-    """Initializes the CrewAI Surface Mapper Agent."""
     model_name = model or os.getenv("MAPPER_MODEL")
     if not model_name:
         raise ValueError("MAPPER_MODEL environment variable is not configured")
-    key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if "deepseek" in model_name.lower():
+        key = api_key or os.getenv("DEEPSEEK_API_KEY")
+    else:
+        key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     llm = LLM(model=model_name, api_key=key, temperature=0.1)
 
     return Agent(
@@ -123,9 +125,8 @@ STRICT RULES:
 """
 
     return Task(
-        description=description,
-        expected_output="A PropositionList containing a list of Proposition objects.",
-        output_pydantic=PropositionList,
+        description=description + "\n\nOutput format:\nYou must output ONLY a valid JSON object matching the PropositionList schema:\n{\n  \"propositions\": [\n    {\n      \"proposition_id\": \"SM-001\",\n      \"endpoint\": \"POST /payment/charge\",\n      \"failure_mode\": \"connection_pool_exhaustion\",\n      \"justification\": \"...\",\n      \"predicted_signal\": \"...\",\n      \"graph_edge_ref\": \"...\"\n    }\n  ]\n}",
+        expected_output="A JSON object conforming to PropositionList schema: {\"propositions\": [...]}.",
         agent=agent,
     )
 
@@ -141,11 +142,13 @@ def run_surface_mapper(
     Executes the Surface Mapper workflow:
     1. Deterministically builds AST graph and parses OpenAPI specs.
     2. Checks disk cache; if found and not force_refresh, returns cached validated propositions.
-    3. Otherwise runs CrewAI agent.
+    3. Otherwise runs CrewAI agent in JSON mode with retry adapter.
     4. Deterministically validates all propositions with guardrails.
     5. Caches validated propositions on disk.
     6. Persists propositions in SurveyOps internal PostgreSQL.
     """
+    from surveyops.llm_utils import execute_with_json_retry
+
     model_name = model or os.getenv("MAPPER_MODEL")
     if not model_name:
         raise ValueError("MAPPER_MODEL environment variable is not configured")
@@ -156,10 +159,10 @@ def run_surface_mapper(
     target_cache_file = cache_path or DEFAULT_CACHE_FILE
     target_cache_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Compute deterministic cache key from graph structure and OpenAPI spec
+    # Compute deterministic cache key including model name and mode
     import hashlib
     cache_key = hashlib.sha256(
-        (graph.model_dump_json() + spec.model_dump_json()).encode("utf-8")
+        f"{model_name}|json_mode|{graph.model_dump_json()}|{spec.model_dump_json()}".encode("utf-8")
     ).hexdigest()
 
     metadata: dict[str, Any] = {
@@ -193,44 +196,41 @@ def run_surface_mapper(
             # Fall back to live generation if cache is corrupted or key mismatch
             pass
 
-    # 2. Run CrewAI agent
+    # 2. Run CrewAI agent in JSON mode
     callbacks = SurfaceMapperCallbackHandler()
     agent = build_surface_mapper_agent(model=model_name, callbacks=callbacks)
     task = create_mapping_task(agent, graph, spec)
 
-    crew = Crew(
-        agents=[agent],
-        tasks=[task],
-        step_callback=callbacks.step_callback,
-        task_callback=callbacks.task_callback,
-        verbose=False,
+    def _execute_crew(prompt_text: str) -> str:
+        current_task = Task(
+            description=prompt_text,
+            expected_output="A JSON object conforming to PropositionList schema: {\"propositions\": [...]}.",
+            agent=agent,
+        )
+        crew = Crew(
+            agents=[agent],
+            tasks=[current_task],
+            step_callback=callbacks.step_callback,
+            task_callback=callbacks.task_callback,
+            verbose=False,
+        )
+        res = crew.kickoff()
+        if hasattr(res, "token_usage") and res.token_usage:
+            tu = res.token_usage
+            metadata["token_usage"] = {
+                "total_tokens": getattr(tu, "total_tokens", None),
+                "prompt_tokens": getattr(tu, "prompt_tokens", None),
+                "completion_tokens": getattr(tu, "completion_tokens", None),
+            }
+        return res.raw
+
+    parsed_list = execute_with_json_retry(
+        execute_fn=_execute_crew,
+        prompt=task.description,
+        model_cls=PropositionList,
+        max_retries=1,
     )
-
-    crew_result = crew.kickoff()
-
-    # Extract propositions from CrewAI output
-    raw_propositions: list[Proposition] = []
-    if crew_result.pydantic and isinstance(crew_result.pydantic, PropositionList):
-        raw_propositions = crew_result.pydantic.propositions
-    elif isinstance(crew_result.raw, str):
-        # Attempt fallback json parsing
-        try:
-            parsed_json = json.loads(crew_result.raw)
-            if "propositions" in parsed_json:
-                raw_propositions = [Proposition(**p) for p in parsed_json["propositions"]]
-        except Exception:
-            pass
-
-    # Extract token usage if available
-    token_usage = {}
-    if hasattr(crew_result, "token_usage") and crew_result.token_usage:
-        tu = crew_result.token_usage
-        token_usage = {
-            "total_tokens": getattr(tu, "total_tokens", None),
-            "prompt_tokens": getattr(tu, "prompt_tokens", None),
-            "completion_tokens": getattr(tu, "completion_tokens", None),
-        }
-    metadata["token_usage"] = token_usage
+    raw_propositions = parsed_list.propositions
 
     # 3. Guardrail validation
     report = validate_propositions(raw_propositions, graph, spec)
@@ -240,7 +240,7 @@ def run_surface_mapper(
         "cache_key": cache_key,
         "propositions": [p.model_dump() for p in report.valid_propositions],
         "dropped": [d.model_dump() for d in report.dropped_propositions],
-        "token_usage": token_usage,
+        "token_usage": metadata.get("token_usage", {}),
         "metadata": {
             "graph_nodes": metadata["graph_nodes"],
             "graph_edges": metadata["graph_edges"],

@@ -72,16 +72,43 @@ Last updated: 2026-10-17
   - Test suite expanded to 106 tests (`pytest tests/ -v` all passing): 15 unit tests covering exit logic, falsification, malformed LLM outputs, Runner failures, untrusted log delimiters, seeding, and background trigger.
   - Live evaluation: 5 live runs executed against target application under active connection pool exhaustion fault with ground truth comparison performed post-run.
 
+- DeepSeek Model Evaluation Spike (`scripts/spikes/deepseek_replacement_spike.py`):
+  - Model connector: Added `litellm` to `requirements.in` / `requirements.txt`; Decision 21 in `docs/DECISIONS.md`.
+  - Model vars set to `deepseek/deepseek-flash` in `.env.example` and `.env`; no hardcoded model strings in repo.
+  - Spike results:
+    - ADK function calling alone: 10/10 passed (100%, avg ~1.0s).
+    - Prompt injection resilience: DeepSeek 5/5 clean (0 jailbreaks, avg 2.33s), Gemini 5/5 clean (0 jailbreaks, avg 1.39s).
+    - OpenTelemetry tracing: 190 spans recorded with model names and token counts.
+    - ADK `output_schema`: 0/10 passed (0%, failed with HTTP 400: `This response_format type is unavailable now`).
+    - CrewAI `output_pydantic`: 0/10 passed (0%, failed with HTTP 400: `This response_format type is unavailable now`).
+  - Progression halted per requirement 4 stop rule (< 9/10 structured output threshold); live Diagnostician evaluation not executed.
+- Step 6b completed (Structured-Output Adapter & deepseek/deepseek-flash Switch):
+  - Reusable adapter built in `surveyops/llm_utils.py`:
+    - ADK tool-calling mode (`build_adk_submission_tool`) creates dynamic submission tools matching Pydantic models; plain text model replies raise `PlainTextReplyError`.
+    - CrewAI JSON mode (`execute_with_json_retry`) extracts JSON via regex fence stripping, validates with `model_validate_json`, and performs 1-shot retry on schema validation errors.
+  - Ported Diagnostician agents (`hypothesis_agent`, `ledger_evaluator`) to submission tools. Ported Surface Mapper and Remediator stub to JSON mode.
+  - Model configurations set to `deepseek/deepseek-flash` across all agents (`MAPPER_MODEL`, `DIAGNOSTICIAN_MODEL`, `REMEDIATOR_MODEL`, `BASELINE_MODEL`). Served model logged as `deepseek-flash` (DeepSeek-V4.1-Flash-1017) in incident run records.
+  - LLM record/replay cache keys updated to include model name and mode in both `diagnostician/cache.py` and `surface_mapper/cache/`.
+  - Full test suite: 119/119 unit and integration tests passing (`pytest tests/`).
+  - Live Diagnostician evaluation under active latency fault (`connection_pool_exhaustion`): 1/1 runs succeeded, correctly identifying root cause at 0.82 confidence in 5 iterations (173.06s wall time, 307,586 tokens, 0 structure failures).
+- Step 6c completed (Diagnostician Reasoning Quality, Exit Gate & Calibration):
+  - Fixed endpoint normalization bug (`POST /payment/charge` -> `/payment/charge`) preventing static proposition `SM-007` from seeding. Seeded propositions retain canonical IDs (`SM-006`, `SM-007`, `SM-008`).
+  - Implemented verdict step validation (`validate_ledger_tool_call`): requires verbatim quoting of `disconfirming_if`, `disconfirming_justification` with field/value, bracketed `[request_id:field]` citations for stored observations, and rejection if confidence is lowered without `disconfirming_condition_met=True`. ADK native tool rejection provides 1-shot in-agent recovery.
+  - Upgraded Prometheus MCP tools with connection pool metrics (`pool_max_in_use`, `pool_capacity`, `pool_utilization_ratio`) and request metrics.
+  - Implemented deterministic exit gate in code (`evaluate_exit_conditions`): requires experiment specifically against leader's `disconfirming_if`, verdict "not met", margin >= `CONFIDENCE_MARGIN` (0.20), evidence matching `predicted_signal` keywords, and `calibrated_conf >= CONFIDENCE_THRESHOLD` (0.80).
+  - Implemented calibrated confidence computation in code (`compute_calibrated_confidence`) from supporting observation count, disconfirming survival, and margin.
+  - Completed 5-run live evaluation under active connection pool exhaustion with fixed `deepseek/deepseek-flash` model: 5/5 runs matched ground truth (100% accuracy, mean 1.8 iterations, mean 62,803 tokens, mean 49.4s wall time).
+
 ## In progress
 - None
 
 ## Blocked
-- None
+- None (DeepSeek structured output unblocked via `surveyops/llm_utils.py` adapter).
 
 ## Next 3
-1. Real Remediator agent implementation (CrewAI)
-2. Remediator regression testing & PR generation to GitHub
-3. End-to-end evaluation benchmark across full fault catalog
+1. Real Remediator agent implementation (CrewAI).
+2. End-to-end evaluation benchmark across full fault catalog (5 faults).
+3. Viva preparation and final cloud deployment.
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

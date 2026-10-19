@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import json
 import logging
 import os
+import re
 import sys
 import uuid
 from typing import Any, AsyncGenerator
@@ -91,6 +92,160 @@ def get_shared_secret() -> str:
     return os.environ.get("INVESTIGATE_SHARED_SECRET") or "dev-secret"
 
 
+def reconcile_hypotheses_with_code_authority(
+    canonical_hyps: list[HypothesisItem],
+    submitted_hyps: list[HypothesisItem],
+) -> list[HypothesisItem]:
+    """
+    Code-authoritative hypothesis reconciliation (Requirement 4):
+    1. Hypothesis IDs are assigned by code, not the LLM.
+    2. Seeded propositions strictly retain their proposition_id and metadata.
+    3. If the LLM renames an existing failure mode, code remaps it to the canonical ID.
+    4. A 'novel' label is never default and requires explicit justification.
+    """
+    canonical_by_id = {h.hypothesis_id: h for h in canonical_hyps}
+    canonical_by_mode = {h.failure_mode: h for h in canonical_hyps}
+
+    reconciled: list[HypothesisItem] = []
+    seen_ids = set()
+
+    for sub in submitted_hyps:
+        matched = None
+        if sub.hypothesis_id in canonical_by_id:
+            matched = canonical_by_id[sub.hypothesis_id]
+        elif sub.failure_mode in canonical_by_mode:
+            matched = canonical_by_mode[sub.failure_mode]
+
+        if matched:
+            item = matched.model_copy(update={
+                "confidence": sub.confidence,
+                "status": sub.status or matched.status,
+                "description": sub.description or matched.description,
+                "is_novel": matched.is_novel,
+                "justification": sub.justification or matched.justification,
+            })
+            if item.hypothesis_id not in seen_ids:
+                seen_ids.add(item.hypothesis_id)
+                reconciled.append(item)
+        else:
+            if sub.justification and sub.justification.strip():
+                idx = len(reconciled) + 1
+                novel_id = f"hyp-novel-{idx:02d}"
+                item = HypothesisItem(
+                    hypothesis_id=novel_id,
+                    failure_mode=sub.failure_mode,
+                    description=sub.description,
+                    status=sub.status or "active",
+                    is_novel=True,
+                    justification=sub.justification,
+                    supporting_proposition_id=None,
+                    graph_edge_ref=None,
+                    confidence=sub.confidence,
+                )
+                if novel_id not in seen_ids:
+                    seen_ids.add(novel_id)
+                    reconciled.append(item)
+
+    # Retain any canonical hypotheses that were omitted
+    for h in canonical_hyps:
+        if h.hypothesis_id not in seen_ids:
+            seen_ids.add(h.hypothesis_id)
+            reconciled.append(h)
+
+    return reconciled
+
+
+def validate_ledger_tool_call(
+    ledger_out: LedgerUpdateOutput,
+    tool_context: Any = None,
+) -> str | None:
+    """
+    Code-authoritative validation for the verdict step (Requirement 1):
+    1. Every entry must quote original disconfirming_if.
+    2. disconfirming_condition_met must be accompanied by field and value in justification.
+    3. evidence_for and evidence_against must each cite [request_id:field].
+    4. request_id and field must exist in stored Observations.
+    5. Confidence cannot be lowered without disconfirming_condition_met=True.
+    """
+    state: dict[str, Any] = {}
+    if tool_context and hasattr(tool_context, "session") and tool_context.session:
+        state = tool_context.session.state or {}
+    elif tool_context and hasattr(tool_context, "state") and tool_context.state:
+        state = tool_context.state
+
+    observations = list(state.get("observations", []))
+    last_obs = state.get("last_observation")
+    if last_obs and last_obs not in observations:
+        observations.append(last_obs)
+    pending_req = state.get("pending_request")
+
+    valid_req_ids = set()
+    valid_fields = {
+        "pool_in_use", "pool_max_in_use", "pool_capacity", "pool_utilization_ratio",
+        "request_rate", "request_count", "p99_latency", "error_rate", "results",
+        "value", "promql", "template", "logs", "lines", "lines_count", "service",
+        "p50_latency_ms", "p95_latency_ms", "p99_latency_ms", "total_requests",
+        "successful_requests", "error_requests", "status", "data", "metadata",
+        "concurrency", "duration_s", "http_status", "body", "latency", "endpoint",
+        "range_s", "truncated", "contains_untrusted_text", "error", "ratio",
+        "active", "active_connections", "max_in_use", "capacity", "in_use"
+    }
+
+    for obs in observations:
+        if hasattr(obs, "request_id") and obs.request_id:
+            valid_req_ids.add(obs.request_id)
+        if hasattr(obs, "data") and isinstance(obs.data, dict):
+            valid_fields.update(str(k).lower() for k in obs.data.keys())
+            for k, v in obs.data.items():
+                if isinstance(v, dict):
+                    valid_fields.update(str(sub_k).lower() for sub_k in v.keys())
+
+    if pending_req:
+        req_id = getattr(pending_req, "request_id", None) or (pending_req.get("request_id") if isinstance(pending_req, dict) else None)
+        if req_id:
+            valid_req_ids.add(req_id)
+
+    citation_pattern = re.compile(r"(?:\[|\(|\b)((?:req|exp)-[a-zA-Z0-9_\-]+)[\]:\s.,/]+([a-zA-Z0-9_]+)")
+    existing_hyps = {h.hypothesis_id: h for h in state.get("hypotheses", [])}
+
+    errors: list[str] = []
+    for entry in ledger_out.ledger_entries:
+        if not entry.quoted_disconfirming_if or not entry.quoted_disconfirming_if.strip():
+            errors.append(f"Hypothesis '{entry.hypothesis_id}' lacks a quoted_disconfirming_if.")
+
+        if not entry.disconfirming_justification or not entry.disconfirming_justification.strip():
+            errors.append(f"Hypothesis '{entry.hypothesis_id}' lacks a disconfirming_justification naming an observation field and value.")
+
+        all_evidence = [(item, "evidence_for") for item in entry.evidence_for] + [(item, "evidence_against") for item in entry.evidence_against]
+        if not all_evidence:
+            errors.append(f"Hypothesis '{entry.hypothesis_id}' has no evidence items with citations.")
+
+        for item, list_name in all_evidence:
+            matches = citation_pattern.findall(item)
+            if not matches:
+                if not any(rid in item for rid in valid_req_ids):
+                    errors.append(f"Hypothesis '{entry.hypothesis_id}' {list_name} item lacks a valid [request_id:field] citation: '{item[:60]}'")
+            else:
+                for req_id, field in matches:
+                    if valid_req_ids and req_id not in valid_req_ids:
+                        errors.append(f"Hypothesis '{entry.hypothesis_id}' cites non-existent request_id '{req_id}'. Valid IDs: {sorted(valid_req_ids)}")
+                    if field.lower() not in valid_fields:
+                        errors.append(f"Hypothesis '{entry.hypothesis_id}' cites non-existent field '{field}'.")
+
+        # Confidence lowering check
+        if entry.hypothesis_id in existing_hyps:
+            prev_conf = existing_hyps[entry.hypothesis_id].confidence
+            if entry.confidence < prev_conf and not entry.disconfirming_condition_met:
+                errors.append(
+                    f"Hypothesis '{entry.hypothesis_id}' lowered confidence from {prev_conf:.2f} to {entry.confidence:.2f} "
+                    f"without disconfirming_condition_met=True."
+                )
+
+    if errors:
+        return "Ledger update rejected:\n" + "\n".join(f"- {e}" for e in errors)
+    return None
+
+
 # ── Step B & C: Deterministic A2A Runner Dispatcher Agent ───────────────────
 
 class A2ARunnerDispatcherAgent(BaseAgent):
@@ -111,15 +266,18 @@ class A2ARunnerDispatcherAgent(BaseAgent):
         incident_id = getattr(incident, "incident_id", "inc-unknown")
         iteration = ctx.session.state.get("iteration", 1)
 
-        # 1. Validate structured LLM output with Pydantic in our own code
+        # 1. Validate structured LLM output with Pydantic in our own code via adapter
         step_output = None
-        if isinstance(raw_output, dict):
-            try:
-                step_output = ExperimentStepOutput.model_validate(raw_output)
-            except ValidationError as exc:
-                logger.warning(f"Malformed LLM ExperimentStepOutput: {exc}")
-        elif isinstance(raw_output, ExperimentStepOutput):
-            step_output = raw_output
+        try:
+            from surveyops.llm_utils import extract_adk_structured_output
+            step_output = extract_adk_structured_output(
+                state=ctx.session.state,
+                state_key="step_output_raw",
+                model_cls=ExperimentStepOutput,
+                last_text_reply=raw_output if isinstance(raw_output, str) else None,
+            )
+        except Exception as exc:
+            logger.warning(f"Structured output error in runner dispatcher: {exc}")
 
         # Fallback if LLM output was completely malformed
         if step_output is None:
@@ -137,8 +295,11 @@ class A2ARunnerDispatcherAgent(BaseAgent):
                 disconfirming_if="pool_in_use == 0",
             )
 
-        # Update hypotheses list in session state
-        updated_hyps = step_output.hypotheses or ctx.session.state.get("hypotheses", [])
+        # Update hypotheses list in session state with code authority
+        submitted_hyps = step_output.hypotheses or ctx.session.state.get("hypotheses", [])
+        canonical_hyps = ctx.session.state.get("hypotheses", [])
+        updated_hyps = reconcile_hypotheses_with_code_authority(canonical_hyps, submitted_hyps)
+
         chosen = step_output.chosen_experiment
         if hasattr(chosen, "to_experiment_request"):
             req = chosen.to_experiment_request()
@@ -149,7 +310,20 @@ class A2ARunnerDispatcherAgent(BaseAgent):
         else:
             req = chosen
 
+        # Remap chosen hypothesis_id to canonical ID if needed
+        matched_h = next((h for h in updated_hyps if h.hypothesis_id == req.hypothesis_id), None)
+        if not matched_h:
+            matched_h = next((h for h in updated_hyps if h.failure_mode == getattr(req, "failure_mode", None)), None)
+            if matched_h:
+                req.hypothesis_id = matched_h.hypothesis_id
+
         # 2. Enforce Falsification Rule & Allowlist checks
+        print(f"\n[EXPERIMENT REQUEST] ID: {req.request_id} (Iteration {iteration}) for hypothesis '{req.hypothesis_id}':")
+        print(f"  Type: {req.experiment_type.value}")
+        print(f"  Params: {req.params.model_dump() if hasattr(req.params, 'model_dump') else req.params}")
+        print(f"  disconfirming_if verbatim: \"{req.disconfirming_if}\"")
+        print(f"  Rationale: {req.rationale}")
+
         guardrail_error: str | None = None
         try:
             validate_experiment_request(req)
@@ -228,6 +402,10 @@ class A2ARunnerDispatcherAgent(BaseAgent):
                     collected_at=datetime.now(timezone.utc),
                 )
 
+        print(f"\n[RAW OBSERVATION] Request ID: {observation.request_id} | Source: {observation.source}:")
+        print(f"  Collected At: {observation.collected_at}")
+        print(f"  Data: {json.dumps(observation.data, indent=2, default=str)}")
+
         # 4. Save state
         obs_history = list(ctx.session.state.get("observations", []))
         obs_history.append(observation)
@@ -271,20 +449,34 @@ class ExitDecisionAgent(BaseAgent):
         disconfirming_tested = set(ctx.session.state.get("disconfirming_hypotheses_tested", []))
         hypotheses = ctx.session.state.get("hypotheses", [])
 
-        # 1. Validate structured ledger output
+        # 1. Validate structured ledger output via adapter
         ledger_out = None
-        if isinstance(raw_ledger, dict):
-            try:
-                ledger_out = LedgerUpdateOutput.model_validate(raw_ledger)
-            except ValidationError as exc:
-                logger.warning(f"Malformed LLM LedgerUpdateOutput: {exc}")
-        elif isinstance(raw_ledger, LedgerUpdateOutput):
-            ledger_out = raw_ledger
+        try:
+            from surveyops.llm_utils import extract_adk_structured_output
+            ledger_out = extract_adk_structured_output(
+                state=ctx.session.state,
+                state_key="ledger_output_raw",
+                model_cls=LedgerUpdateOutput,
+                last_text_reply=raw_ledger if isinstance(raw_ledger, str) else None,
+            )
+        except Exception as exc:
+            logger.warning(f"Structured output error in exit decision: {exc}")
 
         existing_ledger = list(ctx.session.state.get("ledger", []))
         recommendation = "continue"
 
         if ledger_out is not None:
+            print(f"\n[LEDGER UPDATE] (Iteration {iteration}/{max_iterations}):")
+            for entry in ledger_out.ledger_entries:
+                print(f"  - Hypothesis ID: {entry.hypothesis_id} | Status: {entry.status} | Conf: {entry.confidence:.2f}")
+                print(f"    Quoted disconfirming_if: \"{entry.quoted_disconfirming_if}\"")
+                print(f"    Disconfirming condition met: {entry.disconfirming_condition_met}")
+                print(f"    Justification: {entry.disconfirming_justification}")
+                print(f"    Evidence FOR: {entry.evidence_for}")
+                print(f"    Evidence AGAINST: {entry.evidence_against}")
+            print(f"  LLM Recommendation: {ledger_out.llm_recommendation}")
+            print(f"  Reasoning: {ledger_out.reasoning}\n")
+
             recommendation = ledger_out.llm_recommendation
             # Append new ledger entries
             for entry in ledger_out.ledger_entries:
@@ -302,6 +494,8 @@ class ExitDecisionAgent(BaseAgent):
             iteration=iteration,
             max_iterations=max_iterations,
             llm_recommendation=recommendation,
+            ledger=existing_ledger,
+            propositions=ctx.session.state.get("propositions", []),
         )
 
         logger.info(
@@ -318,7 +512,8 @@ class ExitDecisionAgent(BaseAgent):
                 endpoint=endpoint,
                 supporting_proposition_id=top_h.supporting_proposition_id if (exit_decision.outcome == Outcome.root_cause and top_h) else None,
                 graph_edge_ref=top_h.graph_edge_ref if (exit_decision.outcome == Outcome.root_cause and top_h) else None,
-                confidence=top_h.confidence if (exit_decision.outcome == Outcome.root_cause and top_h) else None,
+                confidence=exit_decision.confidence if (exit_decision.outcome == Outcome.root_cause and top_h) else None,
+                self_reported_confidence=exit_decision.self_reported_confidence if (exit_decision.outcome == Outcome.root_cause and top_h) else None,
                 ruled_out=[h.hypothesis_id for h in hypotheses if h.status == "ruled_out"],
                 iterations_used=iteration,
             )
@@ -447,14 +642,22 @@ def build_diagnostician_loop_agent(
         backoff_factor=2.0,
     )
 
+    from surveyops.llm_utils import build_adk_submission_tool
+
     # Step A: Propose/update hypotheses and pick experiment
+    submit_step_tool = build_adk_submission_tool(
+        tool_name="submit_experiment_step",
+        description="Submit updated hypotheses and the chosen experiment request for this iteration.",
+        model_cls=ExperimentStepOutput,
+        state_key="step_output_raw",
+    )
+
     hypothesis_agent = LlmAgent(
         name="hypothesis_and_experiment_selector",
         model=resolved_model,
         instruction=get_hypothesis_agent_instruction,
-        global_instruction=SYSTEM_INSTRUCTIONS,
-        output_schema=ExperimentStepOutput,
-        output_key="step_output_raw",
+        global_instruction=SYSTEM_INSTRUCTIONS + "\n\nYou MUST call the submit_experiment_step tool with your updated hypotheses and chosen experiment.",
+        tools=[submit_step_tool],
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=0.1,
             max_output_tokens=4096,
@@ -474,13 +677,20 @@ def build_diagnostician_loop_agent(
     )
 
     # Step D: Synthesize observation and update evidence ledger
+    submit_ledger_tool = build_adk_submission_tool(
+        tool_name="submit_ledger_update",
+        description="Submit evidence ledger entries and LLM recommendation based on the observation.",
+        model_cls=LedgerUpdateOutput,
+        state_key="ledger_output_raw",
+        validator=validate_ledger_tool_call,
+    )
+
     ledger_evaluator = LlmAgent(
         name="ledger_evaluator",
         model=resolved_model,
         instruction=get_ledger_evaluator_instruction,
-        global_instruction=SYSTEM_INSTRUCTIONS,
-        output_schema=LedgerUpdateOutput,
-        output_key="ledger_output_raw",
+        global_instruction=SYSTEM_INSTRUCTIONS + "\n\nYou MUST call the submit_ledger_update tool with your updated ledger entries and recommendation.",
+        tools=[submit_ledger_tool],
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=0.1,
             max_output_tokens=4096,
@@ -570,6 +780,7 @@ async def run_diagnostician(
     Returns the final validated DiagnosisResult model.
     """
     resolved_incident_id = incident_id or getattr(incident, "incident_id", None) or f"inc-{uuid.uuid4().hex[:8]}"
+    resolved_model = model or get_diagnostician_model()
     token_tracker.reset(resolved_incident_id)
 
     # 1. Load static propositions for the incident's endpoint
@@ -588,13 +799,25 @@ async def run_diagnostician(
             try:
                 with open(cache_path) as f:
                     cache_data = json.load(f)
-                all_props = [Proposition.model_validate(p) for p in cache_data.get("propositions", [])]
-                propositions = [p for p in all_props if p.endpoint == incident.endpoint]
+                raw_props = cache_data.get("propositions", []) if isinstance(cache_data, dict) else cache_data
+                all_props = [Proposition.model_validate(p) for p in raw_props]
+                from surveyops.agents.surface_mapper.storage import normalize_endpoint
+                norm_ep = normalize_endpoint(incident.endpoint)
+                propositions = [p for p in all_props if normalize_endpoint(p.endpoint) == norm_ep]
             except Exception as exc:
                 logger.warning(f"Could not load from cache: {exc}")
 
     # 2. Seed candidate hypotheses
     hypotheses = seed_hypotheses_from_propositions(incident, propositions)
+
+    print(f"\n=======================================================")
+    print(f"[SEEDED HYPOTHESES] ({len(hypotheses)} seeded for endpoint '{incident.endpoint}'):")
+    for h in hypotheses:
+        print(f"  - Hypothesis ID: {h.hypothesis_id} | failure_mode: {h.failure_mode.value} | is_novel: {h.is_novel} | status: {h.status} | conf: {h.confidence:.2f}")
+        print(f"    Description: {h.description}")
+        if h.supporting_proposition_id:
+            print(f"    Supporting Proposition ID: {h.supporting_proposition_id}")
+    print(f"=======================================================\n")
 
     # 3. Build LoopAgent and InMemoryRunner
     loop_agent = build_diagnostician_loop_agent(
@@ -666,13 +889,37 @@ async def run_diagnostician(
             iterations_used=final_session.state.get("iteration", 1),
         )
 
+    usage = token_tracker.get_usage(resolved_incident_id)
+    served_models = usage.get("served_models", [])
+    primary_model = served_models[0] if served_models else resolved_model
+    _incident_run_records[resolved_incident_id] = {
+        "incident_id": resolved_incident_id,
+        "endpoint": incident.endpoint,
+        "outcome": diagnosis.outcome.value,
+        "root_cause": diagnosis.root_cause.value if diagnosis.root_cause else None,
+        "confidence": diagnosis.confidence,
+        "iterations_used": diagnosis.iterations_used,
+        "prompt_tokens": usage.get("prompt_tokens", 0),
+        "completion_tokens": usage.get("completion_tokens", 0),
+        "total_tokens": usage.get("total_tokens", 0),
+        "served_models": served_models or [resolved_model],
+        "primary_served_model": primary_model,
+    }
+    logger.info(f"Incident Run Record [{resolved_incident_id}]: {json.dumps(_incident_run_records[resolved_incident_id])}")
+
     return diagnosis
 
 
 _incident_ledgers: dict[str, list[LedgerEntry]] = {}
+_incident_run_records: dict[str, dict[str, Any]] = {}
 
 
 def get_incident_ledger(incident_id: str) -> list[LedgerEntry]:
     """Retrieves the full evidence ledger for a given incident."""
     return _incident_ledgers.get(incident_id, [])
+
+
+def get_incident_run_record(incident_id: str) -> dict[str, Any]:
+    """Retrieves the run and model audit record for a given incident."""
+    return _incident_run_records.get(incident_id, {})
 
