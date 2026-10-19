@@ -1,10 +1,14 @@
+import json
+import logging
 import os
 import urllib.parse
 import urllib.request
-import json
+from datetime import datetime, timezone
 from typing import Any
 
 from .schemas import PrometheusQueryReturn
+
+logger = logging.getLogger(__name__)
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
 
@@ -61,12 +65,14 @@ def execute_prometheus_query(
     service: str | None = None,
     endpoint: str | None = None,
     range_s: int = 300,
+    window_start: str | None = None,
 ) -> PrometheusQueryReturn:
     """
     Executes a vetted named query template against Prometheus.
     Arbitrary PromQL is strictly rejected.
     When querying 'p99_latency', automatically bundles request rate, sample count,
     and DB pool metrics so latency cannot be misinterpreted when few samples finished.
+    If window_start is provided, anchors range_s to the incident onset (preventing lookback into older trials).
     """
     if template not in QUERY_TEMPLATES:
         raise ValueError(
@@ -83,8 +89,22 @@ def execute_prometheus_query(
             f"Disallowed endpoint '{endpoint}'. Allowed endpoints: {sorted(ALLOWED_ENDPOINTS)}"
         )
 
-    # Cap range between 10s and 3600s
-    range_s = min(max(int(range_s), 10), 3600)
+    # If window_start is given, anchor range_s to elapsed seconds since window_start
+    if window_start:
+        try:
+            ws_str = str(window_start).replace("Z", "+00:00")
+            ws_dt = datetime.fromisoformat(ws_str)
+            if ws_dt.tzinfo is None:
+                ws_dt = ws_dt.replace(tzinfo=timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            elapsed_s = int((now_utc - ws_dt).total_seconds())
+            range_s = min(max(elapsed_s + 5, 15), 3600)
+        except Exception as exc:
+            logger.warning(f"Could not parse window_start '{window_start}': {exc}")
+            range_s = min(max(int(range_s), 10), 3600)
+    else:
+        # Cap range between 10s and 3600s
+        range_s = min(max(int(range_s), 10), 3600)
 
     # Build safe query string from template
     raw_query = QUERY_TEMPLATES[template]

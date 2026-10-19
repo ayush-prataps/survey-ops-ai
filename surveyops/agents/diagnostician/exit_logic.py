@@ -39,14 +39,14 @@ def get_max_loop_iterations() -> int:
     return int(os.environ.get("MAX_LOOP_ITERATIONS", str(DEFAULT_MAX_LOOP_ITERATIONS)))
 
 
-def compute_calibrated_confidence(
+def compute_heuristic_confidence_score(
     leader: HypothesisItem,
     ledger: list[LedgerEntry],
     margin: float,
     disconfirming_passed: bool,
 ) -> float:
     """
-    Computes calibrated confidence purely in code (Requirement 5):
+    Computes heuristic confidence score purely in code (Requirement 5):
     - Distinct cited supporting observations in evidence_for.
     - Whether disconfirming test passed.
     - Margin over runner-up.
@@ -170,17 +170,17 @@ def evaluate_exit_conditions(
         # Survived falsification test if at least one experiment was run against it
         disconfirming_passed = has_disconfirming_test
 
-    # Signal match & Calibration check (Requirements 2d & 5)
+    # Signal match & Heuristic confidence score check (Requirements 2d & 5)
     if ledger is not None:
         signal_matched, signal_reason = check_predicted_signal_match(active_top, ledger, propositions or [])
-        calibrated_conf = compute_calibrated_confidence(active_top, ledger, margin, disconfirming_passed)
+        heuristic_score = compute_heuristic_confidence_score(active_top, ledger, margin, disconfirming_passed)
     else:
         signal_matched, signal_reason = True, "no_ledger_provided"
-        calibrated_conf = active_top.confidence
+        heuristic_score = active_top.confidence
 
     logger.info(
-        f"CALIBRATION: {active_top.hypothesis_id} self_reported={active_top.confidence:.2f}, "
-        f"calibrated={calibrated_conf:.2f} (margin={margin:.2f}, disconfirming_passed={disconfirming_passed}, "
+        f"HEURISTIC SCORE: {active_top.hypothesis_id} self_reported={active_top.confidence:.2f}, "
+        f"heuristic={heuristic_score:.2f} (margin={margin:.2f}, disconfirming_passed={disconfirming_passed}, "
         f"signal_matched={signal_matched})"
     )
 
@@ -190,7 +190,7 @@ def evaluate_exit_conditions(
         and disconfirming_passed
         and (not disconfirming_met)
         and margin >= conf_margin
-        and (calibrated_conf >= conf_thresh if ledger is not None else active_top.confidence >= conf_thresh)
+        and (heuristic_score >= conf_thresh if ledger is not None else active_top.confidence >= conf_thresh)
         and signal_matched
     )
 
@@ -199,39 +199,39 @@ def evaluate_exit_conditions(
             should_exit=True,
             outcome=Outcome.root_cause,
             top_hypothesis=active_top,
-            confidence=calibrated_conf if ledger is not None else active_top.confidence,
+            confidence=heuristic_score if ledger is not None else active_top.confidence,
             self_reported_confidence=active_top.confidence,
             reason=(
                 f"Leader '{active_top.hypothesis_id}' ({active_top.failure_mode}) satisfied all root_cause gates: "
                 f"disconfirming test passed (verdict 'not met'), margin {margin:.2f} >= {conf_margin:.2f}, "
-                f"confidence (calibrated={calibrated_conf:.2f}, self={active_top.confidence:.2f}) >= {conf_thresh:.2f}, "
+                f"confidence (heuristic_score={heuristic_score:.2f}, self={active_top.confidence:.2f}) >= {conf_thresh:.2f}, "
                 f"disconfirming_tested={has_disconfirming_test}, and {signal_reason}."
             ),
         )
 
     # Check iteration budget exhaustion
     if iteration >= max_iters:
-        if active_top.confidence < 0.40 or calibrated_conf < 0.40 or llm_recommendation.lower() == "abstain":
+        if active_top.confidence < 0.40 or heuristic_score < 0.40 or llm_recommendation.lower() == "abstain":
             return ExitDecision(
                 should_exit=True,
                 outcome=Outcome.abstained,
                 top_hypothesis=active_top,
-                confidence=calibrated_conf,
+                confidence=heuristic_score,
                 self_reported_confidence=active_top.confidence,
                 reason=(
                     f"Iteration budget exhausted at iteration {iteration}/{max_iters} "
-                    f"with insufficient evidence (confidence {calibrated_conf:.2f} < 0.40)."
+                    f"with insufficient evidence (confidence {heuristic_score:.2f} < 0.40)."
                 ),
             )
         return ExitDecision(
             should_exit=True,
             outcome=Outcome.budget_exhausted,
             top_hypothesis=active_top,
-            confidence=calibrated_conf,
+            confidence=heuristic_score,
             self_reported_confidence=active_top.confidence,
             reason=(
                 f"Iteration budget exhausted ({iteration}/{max_iters}) without meeting root-cause criteria "
-                f"(confidence={calibrated_conf:.2f}/{conf_thresh:.2f}, margin={margin:.2f}/{conf_margin:.2f}, "
+                f"(confidence={heuristic_score:.2f}/{conf_thresh:.2f}, margin={margin:.2f}/{conf_margin:.2f}, "
                 f"disconfirming_tested={has_disconfirming_test}, disconfirming_passed={disconfirming_passed}, signal_matched={signal_matched})."
             ),
         )
@@ -242,7 +242,7 @@ def evaluate_exit_conditions(
             should_exit=True,
             outcome=Outcome.abstained,
             top_hypothesis=active_top,
-            confidence=calibrated_conf,
+            confidence=heuristic_score,
             self_reported_confidence=active_top.confidence,
             reason="Abstained based on insufficient empirical evidence to support candidate hypotheses.",
         )
@@ -252,11 +252,11 @@ def evaluate_exit_conditions(
         should_exit=False,
         outcome=Outcome.budget_exhausted,
         top_hypothesis=active_top,
-        confidence=calibrated_conf,
+        confidence=heuristic_score,
         self_reported_confidence=active_top.confidence,
         reason=(
             f"Continuing loop (iteration {iteration}/{max_iters}): leader '{active_top.hypothesis_id}' "
-            f"confidence={calibrated_conf:.2f}/{conf_thresh:.2f}, margin={margin:.2f}/{conf_margin:.2f}, "
+            f"confidence={heuristic_score:.2f}/{conf_thresh:.2f}, margin={margin:.2f}/{conf_margin:.2f}, "
             f"disconfirming_tested={has_disconfirming_test}, disconfirming_passed={disconfirming_passed}, signal_matched={signal_matched}."
         ),
     )

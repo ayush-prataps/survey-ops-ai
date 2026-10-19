@@ -149,7 +149,7 @@ async def main():
             "wall_time_s": wall_time,
             "ledger_count": len(ledger_entries),
         })
-        print(f"  Run {run_idx}: Outcome={diagnosis.outcome.value}, RootCause={diagnosis.root_cause}, CalibratedConf={diagnosis.confidence}, SelfReportedConf={diagnosis.self_reported_confidence}, Iterations={diagnosis.iterations_used}, Tokens={usage['total_tokens']}, Time={wall_time}s")
+        print(f"  Run {run_idx}: Outcome={diagnosis.outcome.value}, RootCause={diagnosis.root_cause}, HeuristicScore={diagnosis.confidence}, SelfReportedConf={diagnosis.self_reported_confidence}, Iterations={diagnosis.iterations_used}, Tokens={usage['total_tokens']}, Time={wall_time}s")
 
         if run_idx == 1:
             sample_diagnosis = diagnosis

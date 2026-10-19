@@ -204,6 +204,10 @@ def health() -> dict[str, Any]:
 
 @app.post("/payment/charge", response_model=ChargeResponse)
 def charge_payment(req: ChargeRequest) -> ChargeResponse:
+    if os.getenv("FAULT_INJECT_5XX", "false").lower() == "true" or os.path.exists("/tmp/fault_inject_5xx"):
+        logger.error("Fault injected: Upstream payment gateway unavailable (502 Bad Gateway)")
+        raise HTTPException(status_code=502, detail="Upstream payment gateway unavailable")
+
     if req.amount <= 0:
         raise HTTPException(status_code=400, detail="Payment amount must be positive")
 

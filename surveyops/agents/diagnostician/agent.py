@@ -317,6 +317,13 @@ class A2ARunnerDispatcherAgent(BaseAgent):
             if matched_h:
                 req.hypothesis_id = matched_h.hypothesis_id
 
+        # Anchor queries and logs to incident window_start to prevent cross-trial contamination
+        if incident and getattr(incident, "window_start", None):
+            ws_val = getattr(incident, "window_start")
+            ws_iso = ws_val.isoformat() if hasattr(ws_val, "isoformat") else str(ws_val)
+            if isinstance(req.params, dict):
+                req.params.setdefault("window_start", ws_iso)
+
         # 2. Enforce Falsification Rule & Allowlist checks
         print(f"\n[EXPERIMENT REQUEST] ID: {req.request_id} (Iteration {iteration}) for hypothesis '{req.hypothesis_id}':")
         print(f"  Type: {req.experiment_type.value}")

@@ -114,6 +114,26 @@ class TestPrometheusQueryTool:
         assert res.template == "pool_in_use"
         assert res.results[0]["value"][1] == "5"
 
+    @mock.patch("urllib.request.urlopen")
+    def test_window_start_anchors_range_s(self, mock_urlopen):
+        from datetime import datetime, timezone, timedelta
+        fake_response = {
+            "status": "success",
+            "data": {"resultType": "vector", "result": []},
+        }
+        mock_ctx = mock.MagicMock()
+        mock_ctx.read.return_value = json.dumps(fake_response).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_ctx
+
+        ws = (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()
+        res = execute_prometheus_query(
+            template="p99_latency",
+            endpoint="/payment/charge",
+            window_start=ws,
+        )
+        # range_s must be elapsed (approx 40s) + 5s = ~45s, not fixed 300s or 1800s
+        assert 35 <= res.range_s <= 55
+
 
 class TestDockerLogsTool:
     def test_disallowed_service_rejected(self):
@@ -163,6 +183,31 @@ class TestDockerLogsTool:
         for line in res.logs.splitlines():
             if line.startswith("A"):
                 assert "[TRUNCATED_LINE]" in line
+
+    @mock.patch("docker.from_env")
+    def test_window_start_filters_earlier_trial_logs(self, mock_docker):
+        mock_container = mock.MagicMock()
+        log_payload = (
+            "2026-10-19T10:00:00.123456789Z INFO: earlier trial log from previous run\n"
+            "2026-10-19T10:14:59.999999999Z ERROR: earlier trial error before window\n"
+            "2026-10-19T10:15:00.000000000Z INFO: current trial incident starts\n"
+            "2026-10-19T10:15:05.123456789Z ERROR: current trial pool exhaustion failure\n"
+        )
+        mock_container.logs.return_value = log_payload.encode("utf-8")
+
+        mock_client = mock.MagicMock()
+        mock_client.containers.get.return_value = mock_container
+        mock_docker.return_value = mock_client
+
+        res = execute_fetch_logs(
+            service="payment",
+            window_start="2026-10-19T10:15:00Z",
+        )
+        assert res.lines_count == 2
+        assert "earlier trial log" not in res.logs
+        assert "earlier trial error" not in res.logs
+        assert "current trial incident starts" in res.logs
+        assert "current trial pool exhaustion failure" in res.logs
 
 
 class TestLoadBurstTool:

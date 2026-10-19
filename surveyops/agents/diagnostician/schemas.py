@@ -28,6 +28,7 @@ class ExperimentParams(BaseModel):
     limit: int | None = None
     concurrency: int | None = None
     duration_s: int | None = None
+    window_start: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in self.model_dump().items() if v is not None}

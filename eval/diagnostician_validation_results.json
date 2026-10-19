@@ -1,0 +1,272 @@
+[
+  {
+    "batch": "ControlA",
+    "run": 1,
+    "incident_id": "inc-controla-1-1792409497",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 566788,
+    "completion_tokens": 45571,
+    "total_tokens": 612359,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 232.17,
+    "ledger_count": 24
+  },
+  {
+    "batch": "ControlA",
+    "run": 2,
+    "incident_id": "inc-controla-2-1792409734",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 601191,
+    "completion_tokens": 46701,
+    "total_tokens": 647892,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 221.22,
+    "ledger_count": 24
+  },
+  {
+    "batch": "ControlA",
+    "run": 3,
+    "incident_id": "inc-controla-3-1792409960",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 500493,
+    "completion_tokens": 39945,
+    "total_tokens": 540438,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 188.53,
+    "ledger_count": 23
+  },
+  {
+    "batch": "ControlA",
+    "run": 4,
+    "incident_id": "inc-controla-4-1792410154",
+    "outcome": "root_cause",
+    "root_cause": "missing_index_n_plus_1",
+    "heuristic_score": 0.9,
+    "self_reported_confidence": 0.52,
+    "iterations": 2,
+    "prompt_tokens": 74536,
+    "completion_tokens": 14713,
+    "total_tokens": 89249,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 70.01,
+    "ledger_count": 8
+  },
+  {
+    "batch": "ControlA",
+    "run": 5,
+    "incident_id": "inc-controla-5-1792410229",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 448739,
+    "completion_tokens": 48442,
+    "total_tokens": 497181,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 223.54,
+    "ledger_count": 28
+  },
+  {
+    "batch": "ControlB",
+    "run": 1,
+    "incident_id": "inc-controlb-1-1792410485",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 1,
+    "prompt_tokens": 32673,
+    "completion_tokens": 8573,
+    "total_tokens": 41246,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 42.37,
+    "ledger_count": 4
+  },
+  {
+    "batch": "ControlB",
+    "run": 2,
+    "incident_id": "inc-controlb-2-1792410532",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 499999,
+    "completion_tokens": 39032,
+    "total_tokens": 539031,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 187.7,
+    "ledger_count": 28
+  },
+  {
+    "batch": "ControlB",
+    "run": 3,
+    "incident_id": "inc-controlb-3-1792410725",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 2,
+    "prompt_tokens": 66399,
+    "completion_tokens": 16877,
+    "total_tokens": 83276,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 77.76,
+    "ledger_count": 8
+  },
+  {
+    "batch": "ControlB",
+    "run": 4,
+    "incident_id": "inc-controlb-4-1792410808",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 2,
+    "prompt_tokens": 93139,
+    "completion_tokens": 15252,
+    "total_tokens": 108391,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 70.59,
+    "ledger_count": 8
+  },
+  {
+    "batch": "ControlB",
+    "run": 5,
+    "incident_id": "inc-controlb-5-1792410884",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 2,
+    "prompt_tokens": 73860,
+    "completion_tokens": 13143,
+    "total_tokens": 87003,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 61.56,
+    "ledger_count": 8
+  },
+  {
+    "batch": "PoolFault",
+    "run": 1,
+    "incident_id": "inc-poolfault-1-1792411148",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "heuristic_score": 0.88,
+    "self_reported_confidence": 0.92,
+    "iterations": 6,
+    "prompt_tokens": 526573,
+    "completion_tokens": 40452,
+    "total_tokens": 567025,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 192.71,
+    "ledger_count": 24
+  },
+  {
+    "batch": "PoolFault",
+    "run": 2,
+    "incident_id": "inc-poolfault-2-1792411346",
+    "outcome": "root_cause",
+    "root_cause": "missing_index_n_plus_1",
+    "heuristic_score": 0.91,
+    "self_reported_confidence": 0.68,
+    "iterations": 4,
+    "prompt_tokens": 257019,
+    "completion_tokens": 31925,
+    "total_tokens": 288944,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 151.04,
+    "ledger_count": 16
+  },
+  {
+    "batch": "PoolFault",
+    "run": 3,
+    "incident_id": "inc-poolfault-3-1792411502",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 731681,
+    "completion_tokens": 59797,
+    "total_tokens": 791478,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 283.23,
+    "ledger_count": 24
+  },
+  {
+    "batch": "PoolFault",
+    "run": 4,
+    "incident_id": "inc-poolfault-4-1792411790",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "heuristic_score": 0.88,
+    "self_reported_confidence": 0.8,
+    "iterations": 6,
+    "prompt_tokens": 734529,
+    "completion_tokens": 63007,
+    "total_tokens": 797536,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 292.55,
+    "ledger_count": 24
+  },
+  {
+    "batch": "PoolFault",
+    "run": 5,
+    "incident_id": "inc-poolfault-5-1792412088",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "heuristic_score": 0.89,
+    "self_reported_confidence": 0.88,
+    "iterations": 2,
+    "prompt_tokens": 105067,
+    "completion_tokens": 16306,
+    "total_tokens": 121373,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 70.53,
+    "ledger_count": 8
+  }
+]

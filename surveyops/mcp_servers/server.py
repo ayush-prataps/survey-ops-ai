@@ -27,6 +27,7 @@ def prometheus_query(
     service: str | None = None,
     endpoint: str | None = None,
     range_s: int = 300,
+    window_start: str | None = None,
 ) -> dict:
     """
     Executes a vetted named Prometheus query template.
@@ -37,6 +38,7 @@ def prometheus_query(
         service=service,
         endpoint=endpoint,
         range_s=range_s,
+        window_start=window_start,
     )
     return result.model_dump()
 
@@ -46,6 +48,7 @@ def fetch_logs(
     service: str,
     since_s: int = 300,
     limit: int = 50,
+    window_start: str | None = None,
 ) -> dict:
     """
     Fetches and sanitizes Docker container stdout logs for an allowlisted service.
@@ -56,6 +59,7 @@ def fetch_logs(
         service=service,
         since_s=since_s,
         limit=limit,
+        window_start=window_start,
     )
     return result.model_dump()
 

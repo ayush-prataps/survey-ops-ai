@@ -7,3 +7,4 @@ class FailureMode(str, Enum):
     race_condition_idempotency = "race_condition_idempotency"
     pagination_off_by_one = "pagination_off_by_one"
     retry_storm_no_backoff = "retry_storm_no_backoff"
+    upstream_dependency_failure = "upstream_dependency_failure"

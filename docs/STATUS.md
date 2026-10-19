@@ -91,13 +91,23 @@ Last updated: 2026-10-17
   - LLM record/replay cache keys updated to include model name and mode in both `diagnostician/cache.py` and `surface_mapper/cache/`.
   - Full test suite: 119/119 unit and integration tests passing (`pytest tests/`).
   - Live Diagnostician evaluation under active latency fault (`connection_pool_exhaustion`): 1/1 runs succeeded, correctly identifying root cause at 0.82 confidence in 5 iterations (173.06s wall time, 307,586 tokens, 0 structure failures).
-- Step 6c completed (Diagnostician Reasoning Quality, Exit Gate & Calibration):
+- Step 6c completed (Diagnostician Reasoning Quality, Exit Gate & Heuristic Confidence):
   - Fixed endpoint normalization bug (`POST /payment/charge` -> `/payment/charge`) preventing static proposition `SM-007` from seeding. Seeded propositions retain canonical IDs (`SM-006`, `SM-007`, `SM-008`).
   - Implemented verdict step validation (`validate_ledger_tool_call`): requires verbatim quoting of `disconfirming_if`, `disconfirming_justification` with field/value, bracketed `[request_id:field]` citations for stored observations, and rejection if confidence is lowered without `disconfirming_condition_met=True`. ADK native tool rejection provides 1-shot in-agent recovery.
   - Upgraded Prometheus MCP tools with connection pool metrics (`pool_max_in_use`, `pool_capacity`, `pool_utilization_ratio`) and request metrics.
-  - Implemented deterministic exit gate in code (`evaluate_exit_conditions`): requires experiment specifically against leader's `disconfirming_if`, verdict "not met", margin >= `CONFIDENCE_MARGIN` (0.20), evidence matching `predicted_signal` keywords, and `calibrated_conf >= CONFIDENCE_THRESHOLD` (0.80).
-  - Implemented calibrated confidence computation in code (`compute_calibrated_confidence`) from supporting observation count, disconfirming survival, and margin.
+  - Implemented deterministic exit gate in code (`evaluate_exit_conditions`): requires experiment specifically against leader's `disconfirming_if`, verdict "not met", margin >= `CONFIDENCE_MARGIN` (0.20), evidence matching `predicted_signal` keywords, and `heuristic_score >= CONFIDENCE_THRESHOLD` (0.80).
+  - Implemented heuristic confidence score computation in code (`compute_heuristic_confidence_score`) from supporting observation count, disconfirming survival, and margin.
   - Completed 5-run live evaluation under active connection pool exhaustion with fixed `deepseek/deepseek-flash` model: 5/5 runs matched ground truth (100% accuracy, mean 1.8 iterations, mean 62,803 tokens, mean 49.4s wall time).
+- Step 6d completed (Diagnostician Validation, Isolation, and Control Baselines):
+  - Window contamination & isolation: Identified that `reset_trial.sh` leaves Prometheus TSDB and Docker daemon stdout logs unisolated. Anchored Prometheus queries to incident `window_start` (`range_s`) and implemented line-level RFC3339 timestamp filtering in `docker_logs_tool.py` to discard pre-incident logs. Added unit tests in `tests/test_runner_and_mcp_tools.py`.
+  - Token inflation mitigation: Diagnosed that ~100k token overhead was driven by 100 lines of un-capped Docker logs repeated across tool-call validation cycles. Capped logs to 25 signal-focused lines and citations to 100 chars, reducing per-iteration prompt load by ~80%.
+  - Terminology refactor: Renamed "calibrated confidence" in code and documentation to "heuristic confidence score".
+  - Ground truth enum: Added `FailureMode.upstream_dependency_failure` for Control B.
+  - Control A (Healthy, 5 runs): 4/5 abstained (0 root cause); 1 confident-wrong (`missing_index_n_plus_1` on Run 4).
+  - Control B (5xx upstream fault with unsaturated pool, 5 runs): 5/5 abstained; connection pool exhaustion correctly ruled out in 5/5 runs. Confident-wrong = 0.
+  - Repeat pool fault batch (5 runs): 3/5 diagnosed `connection_pool_exhaustion` (heuristic scores 0.88-0.89), 1 diagnosed `missing_index_n_plus_1`, 1 `budget_exhausted`.
+  - Combined 10 Pool Fault Runs: 8/10 diagnosed `connection_pool_exhaustion` (80%), 1 missed cause, 1 budget exhausted.
+  - Confident-Wrong across all 10 controls: 1/10 (10%).
 
 ## In progress
 - None
