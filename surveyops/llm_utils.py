@@ -142,6 +142,9 @@ def build_adk_submission_tool(
         if tool_context and hasattr(tool_context, "state") and tool_context.state is not None:
             tool_context.state[state_key] = validated
 
+        if tool_context is not None and getattr(tool_context, "actions", None) is not None:
+            tool_context.actions.skip_summarization = True
+
         logger.info(f"Tool {tool_name} successfully recorded {model_cls.__name__} in state['{state_key}'].")
         return f"Successfully validated and recorded {model_cls.__name__}."
 

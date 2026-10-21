@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-17
+Last updated: 2026-10-19
 
 ## Done
 - Synopsis drafted (needs alignment with DECISIONS.md, do not keep rewriting it)
@@ -108,6 +108,12 @@ Last updated: 2026-10-17
   - Repeat pool fault batch (5 runs): 3/5 diagnosed `connection_pool_exhaustion` (heuristic scores 0.88-0.89), 1 diagnosed `missing_index_n_plus_1`, 1 `budget_exhausted`.
   - Combined 10 Pool Fault Runs: 8/10 diagnosed `connection_pool_exhaustion` (80%), 1 missed cause, 1 budget exhausted.
   - Confident-Wrong across all 10 controls: 1/10 (10%).
+- Step 6e completed (Diagnostician token reduction, no diagnostic logic changes):
+  - Both Diagnostician LlmAgent steps use ADK `include_contents="none"`; successful submission tools set `skip_summarization`, while validation failures remain visible for in-step retry.
+  - ADK 2.12.0 supports both settings and retains current-turn tool events in `none` mode; a live ledger rejection was corrected and resubmitted.
+  - Five live pool-fault runs matched ground truth 5/5. Mean token use fell from 62,803 to 24,220 per run (61.4%); the before and after summaries are in `eval/diagnostician_live_run_summary_before.json` and `eval/diagnostician_live_run_summary.json`.
+  - Available local tests: 113 passed, 1 skipped, 1 deselected with target-app integration tests excluded because their expected host ports were occupied by unrelated services.
+  - Live benchmark required a temporary local MCP SDK 2.3.0 override because pinned LiteLLM 1.106.0 imports an MCP symbol absent from pinned MCP 1.28.1. The project virtual environment was restored to MCP 1.28.1 after the run.
 
 ## In progress
 - None

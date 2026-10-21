@@ -10,6 +10,8 @@ Tests:
 - JSON retry mechanism (first-try, retry recovery, exhausted retries)
 """
 
+from types import SimpleNamespace
+
 import pytest
 from pydantic import BaseModel, Field
 
@@ -35,6 +37,7 @@ class MockToolContext:
     def __init__(self) -> None:
         self.state = {}
         self.session = self
+        self.actions = SimpleNamespace(skip_summarization=False)
 
     def get(self, k, default=None):
         return self.state.get(k, default)
@@ -99,6 +102,7 @@ def test_adk_submission_tool_success():
     assert "mock_key" in ctx.state
     assert isinstance(ctx.state["mock_key"], MockResult)
     assert ctx.state["mock_key"].id == "res-101"
+    assert ctx.actions.skip_summarization is True
 
 
 def test_adk_submission_tool_validation_error():
@@ -113,6 +117,7 @@ def test_adk_submission_tool_validation_error():
     res = tool(id="res-102", score=0.5, tool_context=ctx)
     assert "Validation error" in res
     assert "mock_key" not in ctx.state
+    assert ctx.actions.skip_summarization is False
 
 
 def test_adk_plain_text_reply_error():
@@ -156,12 +161,14 @@ def test_adk_submission_tool_custom_validator():
     msg = tool(id="test-val", score=0.5, summary="low score", tool_context=ctx)
     assert "Validation rejected: Score too low" in msg
     assert "mock_key" not in ctx.state
+    assert ctx.actions.skip_summarization is False
 
     # Passes custom validation
     msg2 = tool(id="test-val", score=0.85, summary="high score", tool_context=ctx)
     assert "Successfully validated" in msg2
     assert "mock_key" in ctx.state
     assert ctx.state["mock_key"].score == 0.85
+    assert ctx.actions.skip_summarization is True
 
 
 # ------------------------------------------------------------------------------

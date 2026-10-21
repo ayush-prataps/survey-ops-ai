@@ -662,6 +662,7 @@ def build_diagnostician_loop_agent(
     hypothesis_agent = LlmAgent(
         name="hypothesis_and_experiment_selector",
         model=resolved_model,
+        include_contents="none",
         instruction=get_hypothesis_agent_instruction,
         global_instruction=SYSTEM_INSTRUCTIONS + "\n\nYou MUST call the submit_experiment_step tool with your updated hypotheses and chosen experiment.",
         tools=[submit_step_tool],
@@ -695,6 +696,7 @@ def build_diagnostician_loop_agent(
     ledger_evaluator = LlmAgent(
         name="ledger_evaluator",
         model=resolved_model,
+        include_contents="none",
         instruction=get_ledger_evaluator_instruction,
         global_instruction=SYSTEM_INSTRUCTIONS + "\n\nYou MUST call the submit_ledger_update tool with your updated ledger entries and recommendation.",
         tools=[submit_ledger_tool],
