@@ -1,9 +1,10 @@
+import json
 import os
 from typing import Optional
 import psycopg2
 from psycopg2.extras import execute_values
 from surveyops.schemas.failure_modes import FailureMode
-from surveyops.schemas.propositions import Proposition
+from surveyops.schemas.propositions import Proposition, CheckableSignal
 
 
 def get_surveyops_db_url() -> str:
@@ -36,6 +37,10 @@ def store_propositions(
     conn = psycopg2.connect(url)
     try:
         with conn.cursor() as cur:
+            try:
+                cur.execute("ALTER TABLE propositions ADD COLUMN IF NOT EXISTS checkable_signal JSONB;")
+            except Exception:
+                conn.rollback()
             query = """
             INSERT INTO propositions (
                 proposition_id,
@@ -43,14 +48,16 @@ def store_propositions(
                 failure_mode,
                 justification,
                 predicted_signal,
-                graph_edge_ref
+                graph_edge_ref,
+                checkable_signal
             ) VALUES %s
             ON CONFLICT (proposition_id) DO UPDATE SET
                 endpoint = EXCLUDED.endpoint,
                 failure_mode = EXCLUDED.failure_mode,
                 justification = EXCLUDED.justification,
                 predicted_signal = EXCLUDED.predicted_signal,
-                graph_edge_ref = EXCLUDED.graph_edge_ref;
+                graph_edge_ref = EXCLUDED.graph_edge_ref,
+                checkable_signal = EXCLUDED.checkable_signal;
             """
             data = [
                 (
@@ -60,6 +67,7 @@ def store_propositions(
                     p.justification,
                     p.predicted_signal,
                     p.graph_edge_ref,
+                    json.dumps(p.checkable_signal.model_dump()) if p.checkable_signal else None,
                 )
                 for p in propositions
             ]
@@ -88,7 +96,8 @@ def load_propositions(
     conn = psycopg2.connect(url)
     try:
         with conn.cursor() as cur:
-            query = "SELECT proposition_id, endpoint, failure_mode, justification, predicted_signal, graph_edge_ref FROM propositions"
+            cur.execute("ALTER TABLE propositions ADD COLUMN IF NOT EXISTS checkable_signal JSONB;")
+            query = "SELECT proposition_id, endpoint, failure_mode, justification, predicted_signal, graph_edge_ref, checkable_signal FROM propositions"
             conditions = []
             params = []
             norm_ep = normalize_endpoint(endpoint) if endpoint else None
@@ -108,6 +117,13 @@ def load_propositions(
 
             results = []
             for r in rows:
+                sig = None
+                if len(r) > 6 and r[6]:
+                    try:
+                        sig_data = json.loads(r[6]) if isinstance(r[6], str) else r[6]
+                        sig = CheckableSignal(**sig_data)
+                    except Exception:
+                        pass
                 p = Proposition(
                     proposition_id=r[0],
                     endpoint=r[1],
@@ -115,6 +131,7 @@ def load_propositions(
                     justification=r[3],
                     predicted_signal=r[4],
                     graph_edge_ref=r[5],
+                    checkable_signal=sig,
                 )
                 if norm_ep and normalize_endpoint(p.endpoint) != norm_ep:
                     continue

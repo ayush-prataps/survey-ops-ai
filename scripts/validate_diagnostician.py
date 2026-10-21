@@ -139,15 +139,15 @@ async def main():
     all_results = []
 
     # ──────────────────────────────────────────────────────────────────────────
-    # CONTROL A: Healthy system (no fault injected)
+    # CONTROL A: Healthy system (no fault injected, 10 runs)
     # ──────────────────────────────────────────────────────────────────────────
     if args.batch in ("control_a", "all"):
-        print("\n>>> STARTING CONTROL A: Healthy System (5 runs) <<<")
+        print("\n>>> STARTING CONTROL A: Healthy System (10 runs) <<<")
         subprocess.run([sys.executable, "eval/faults/clear_faults.py"], check=True)
         subprocess.run(["docker", "exec", "target_payment", "rm", "-f", "/tmp/fault_inject_5xx"], check=True)
         generate_normal_payment_traffic()
 
-        for r in range(1, 6):
+        for r in range(1, 11):
             payload_a = InvestigatePayload(
                 alert="HighP99Latency",
                 service="payment",
@@ -158,11 +158,59 @@ async def main():
             )
             res = await run_single_eval("ControlA", r, payload_a)
             all_results.append(res)
-            if r < 5:
-                await asyncio.sleep(5.0)
+            if r < 10:
+                await asyncio.sleep(4.0)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # CONTROL B: Different fault (5xx, pool unsaturated)
+    # POOL FAULT: Two batches of 5 runs (10 runs total)
+    # ──────────────────────────────────────────────────────────────────────────
+    if args.batch in ("pool_fault", "all"):
+        print("\n>>> STARTING POOL FAULT BATCH 1 (Runs 1-5) <<<")
+        subprocess.run([sys.executable, "eval/faults/clear_faults.py"], check=True)
+        subprocess.run(
+            [sys.executable, "eval/faults/inject_latency.py", "--latency-ms", "2500", "--jitter-ms", "100"],
+            check=True,
+        )
+        generate_pool_latency_traffic()
+        await asyncio.sleep(2.0)
+
+        for r in range(1, 6):
+            payload_pool = InvestigatePayload(
+                alert="HighP99Latency",
+                service="payment",
+                endpoint="/payment/charge",
+                metric="http_request_duration_seconds",
+                threshold=0.5,
+                window_start=datetime.now(timezone.utc),
+            )
+            res = await run_single_eval("PoolFault_Batch1", r, payload_pool)
+            all_results.append(res)
+            if r < 5:
+                await asyncio.sleep(4.0)
+
+        # Brief pause between batches
+        print("\n>>> STARTING POOL FAULT BATCH 2 (Runs 6-10) <<<")
+        generate_pool_latency_traffic()
+        await asyncio.sleep(2.0)
+
+        for r in range(6, 11):
+            payload_pool = InvestigatePayload(
+                alert="HighP99Latency",
+                service="payment",
+                endpoint="/payment/charge",
+                metric="http_request_duration_seconds",
+                threshold=0.5,
+                window_start=datetime.now(timezone.utc),
+            )
+            res = await run_single_eval("PoolFault_Batch2", r, payload_pool)
+            all_results.append(res)
+            if r < 10:
+                await asyncio.sleep(4.0)
+
+        subprocess.run([sys.executable, "eval/faults/clear_faults.py"], check=True)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # CONTROL B: Different fault (5xx, pool unsaturated, 5 runs)
     # ──────────────────────────────────────────────────────────────────────────
     if args.batch in ("control_b", "all"):
         print("\n>>> STARTING CONTROL B: 5xx Fault / Upstream Gateway (5 runs) <<<")
@@ -182,50 +230,14 @@ async def main():
             res = await run_single_eval("ControlB", r, payload_b)
             all_results.append(res)
             if r < 5:
-                await asyncio.sleep(5.0)
+                await asyncio.sleep(4.0)
 
         subprocess.run(["docker", "exec", "target_payment", "rm", "-f", "/tmp/fault_inject_5xx"], check=True)
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # POOL FAULT REPEAT BATCH (5 runs)
-    # ──────────────────────────────────────────────────────────────────────────
-    if args.batch in ("pool_fault", "all"):
-        print("\n>>> STARTING POOL FAULT REPEAT BATCH (5 runs) <<<")
-        subprocess.run([sys.executable, "eval/faults/clear_faults.py"], check=True)
-        subprocess.run(
-            [sys.executable, "eval/faults/inject_latency.py", "--latency-ms", "2500", "--jitter-ms", "100"],
-            check=True,
-        )
-        generate_pool_latency_traffic()
-        await asyncio.sleep(2.0)
-
-        for r in range(1, 6):
-            payload_pool = InvestigatePayload(
-                alert="HighP99Latency",
-                service="payment",
-                endpoint="/payment/charge",
-                metric="http_request_duration_seconds",
-                threshold=0.5,
-                window_start=datetime.now(timezone.utc),
-            )
-            res = await run_single_eval("PoolFault", r, payload_pool)
-            all_results.append(res)
-            if r < 5:
-                await asyncio.sleep(5.0)
-
-        subprocess.run([sys.executable, "eval/faults/clear_faults.py"], check=True)
-
     # Save summary
-    out_file = Path("eval/diagnostician_validation_results.json")
-    existing_all = []
-    if out_file.exists():
-        try:
-            existing_all = json.loads(out_file.read_text())
-        except Exception:
-            existing_all = []
-    combined = existing_all + all_results
-    out_file.write_text(json.dumps(combined, indent=2))
-    print(f"\n[DONE] Saved {len(combined)} total run results to {out_file}")
+    out_file = Path("eval/validation_rerun_results.json")
+    out_file.write_text(json.dumps(all_results, indent=2))
+    print(f"\n[DONE] Saved {len(all_results)} run results to {out_file}")
 
 
 if __name__ == "__main__":

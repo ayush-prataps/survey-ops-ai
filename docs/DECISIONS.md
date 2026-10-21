@@ -182,3 +182,11 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
   - *Pool Fault Repeat Batch (5 runs):* 3/5 diagnosed `connection_pool_exhaustion` (scores 0.88-0.89), 1 diagnosed `missing_index_n_plus_1` (score 0.91), 1 `budget_exhausted`.
   - *Combined 10 Pool Fault Runs:* 8/10 diagnosed `connection_pool_exhaustion` (80%), 1 missed cause, 1 budget exhausted.
   - *Confident-Wrong Across Controls:* 1 / 10 runs (10%).
+
+## 2026-10-21: Confident-Wrong Elimination via Deterministic Checkable Signals & Positive Evidence Gate
+- **Root Cause Autopsy:** Control A run 4 and Pool Batch 2 falsely diagnosed `missing_index_n_plus_1` because `predicted_signal` matching relied on generic substring keywords ("payment", "charge", "idempotency") present in normal logs and tracebacks. Without requiring positive proof, the absence of disconfirmation plus keyword matches inflated the heuristic score to 0.90+.
+- **Machine-Checkable Signal (`CheckableSignal`):** Extended `Proposition` schema with `checkable_signal: CheckableSignal` (validated by Pydantic: `metric_name`, `comparator`, `threshold`, `log_pattern`). All 18 Surface Mapper propositions carry a checkable signal in cache and SurveyOps Postgres. Propositions without a valid checkable signal cannot win.
+- **Deterministic Positive Evidence Gate:** Replaced keyword matching with `evaluate_checkable_signal_for_leader`. Evaluates cited observations against the signal. Requires `has_positive_evidence=True`; without it, heuristic confidence score is capped at 0.35, blocking `Outcome.root_cause`.
+- **Positive Evidence Exit Condition:** Declaring root cause requires positive empirical evidence, not merely surviving falsification. If the loop terminates or LLM recommends conclude/abstain without positive evidence, the system deterministically exits with `Outcome.abstained`.
+- **Token Budget & Determinism:** Configured hard token budget (`MAX_INCIDENT_TOKEN_BUDGET`, default 60k) forcing `Outcome.budget_exhausted` when exceeded. Set Diagnostician agents to `temperature=0.0`.
+- **Full History Injection:** Custom prompt builders format full ledger history and all cited observations into prompt instructions each turn, ensuring full context even with ADK `include_contents="none"`.

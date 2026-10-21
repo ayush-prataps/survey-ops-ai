@@ -263,7 +263,7 @@ class A2ARunnerDispatcherAgent(BaseAgent):
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         raw_output = ctx.session.state.get("step_output_raw")
         incident = ctx.session.state.get("incident")
-        incident_id = getattr(incident, "incident_id", "inc-unknown")
+        incident_id = ctx.session.state.get("incident_id") or getattr(incident, "incident_id", None) or "inc-unknown"
         iteration = ctx.session.state.get("iteration", 1)
 
         # 1. Validate structured LLM output with Pydantic in our own code via adapter
@@ -450,7 +450,7 @@ class ExitDecisionAgent(BaseAgent):
         raw_ledger = ctx.session.state.get("ledger_output_raw")
         incident = ctx.session.state.get("incident")
         endpoint = getattr(incident, "endpoint", "unknown")
-        incident_id = getattr(incident, "incident_id", "inc-unknown")
+        incident_id = ctx.session.state.get("incident_id") or getattr(incident, "incident_id", None) or "inc-unknown"
         iteration = ctx.session.state.get("iteration", 1)
         max_iterations = ctx.session.state.get("max_iterations", get_max_loop_iterations())
         disconfirming_tested = set(ctx.session.state.get("disconfirming_hypotheses_tested", []))
@@ -494,16 +494,35 @@ class ExitDecisionAgent(BaseAgent):
                         h.confidence = entry.confidence
                         h.status = entry.status
 
-        # 2. Evaluate exit conditions by code
-        exit_decision: ExitDecision = evaluate_exit_conditions(
-            hypotheses=hypotheses,
-            tested_disconfirming_hypotheses=disconfirming_tested,
-            iteration=iteration,
-            max_iterations=max_iterations,
-            llm_recommendation=recommendation,
-            ledger=existing_ledger,
-            propositions=ctx.session.state.get("propositions", []),
-        )
+        # Check hard token budget per incident from env (Requirement 4)
+        max_token_budget = int(os.environ.get("MAX_INCIDENT_TOKEN_BUDGET", "60000"))
+        usage = token_tracker.get_usage(incident_id)
+        current_tokens = usage.get("total_tokens", 0)
+
+        if current_tokens >= max_token_budget:
+            logger.warning(
+                f"Incident {incident_id} exceeded token budget: {current_tokens} >= {max_token_budget}. Forcing budget_exhausted."
+            )
+            exit_decision = ExitDecision(
+                should_exit=True,
+                outcome=Outcome.budget_exhausted,
+                top_hypothesis=sorted(hypotheses, key=lambda h: h.confidence, reverse=True)[0] if hypotheses else None,
+                confidence=0.0,
+                self_reported_confidence=0.0,
+                reason=f"Hard token budget exhausted ({current_tokens}/{max_token_budget} tokens used).",
+            )
+        else:
+            # 2. Evaluate exit conditions by code
+            exit_decision = evaluate_exit_conditions(
+                hypotheses=hypotheses,
+                tested_disconfirming_hypotheses=disconfirming_tested,
+                iteration=iteration,
+                max_iterations=max_iterations,
+                llm_recommendation=recommendation,
+                ledger=existing_ledger,
+                propositions=ctx.session.state.get("propositions", []),
+                observations=ctx.session.state.get("observations", []),
+            )
 
         logger.info(
             f"ExitDecision (iteration {iteration}/{max_iterations}): should_exit={exit_decision.should_exit}, "
@@ -592,6 +611,7 @@ def get_hypothesis_agent_instruction(ctx: ReadonlyContext) -> str:
     hypotheses = state.get("hypotheses", [])
     ledger = state.get("ledger", [])
     last_obs = state.get("last_observation")
+    observations = state.get("observations", [])
     iteration = state.get("iteration", 1)
     max_iters = state.get("max_iterations", get_max_loop_iterations())
 
@@ -601,6 +621,7 @@ def get_hypothesis_agent_instruction(ctx: ReadonlyContext) -> str:
         hypotheses=hypotheses,
         ledger=ledger,
         last_observation=last_obs,
+        observations=observations,
         iteration=iteration,
         max_iterations=max_iters,
     )
@@ -612,6 +633,8 @@ def get_ledger_evaluator_instruction(ctx: ReadonlyContext) -> str:
     hypotheses = state.get("hypotheses", [])
     pending_request = state.get("pending_request", {})
     last_obs = state.get("last_observation")
+    observations = state.get("observations", [])
+    ledger = state.get("ledger", [])
     iteration = state.get("iteration", 1)
     max_iters = state.get("max_iterations", get_max_loop_iterations())
 
@@ -620,6 +643,8 @@ def get_ledger_evaluator_instruction(ctx: ReadonlyContext) -> str:
         hypotheses=hypotheses,
         pending_request=pending_request,
         last_observation=last_obs,
+        observations=observations,
+        ledger=ledger,
         iteration=iteration,
         max_iterations=max_iters,
     )
@@ -667,7 +692,7 @@ def build_diagnostician_loop_agent(
         global_instruction=SYSTEM_INSTRUCTIONS + "\n\nYou MUST call the submit_experiment_step tool with your updated hypotheses and chosen experiment.",
         tools=[submit_step_tool],
         generate_content_config=genai_types.GenerateContentConfig(
-            temperature=0.1,
+            temperature=0.0,
             max_output_tokens=4096,
         ),
         retry_config=retry_cfg,
@@ -701,7 +726,7 @@ def build_diagnostician_loop_agent(
         global_instruction=SYSTEM_INSTRUCTIONS + "\n\nYou MUST call the submit_ledger_update tool with your updated ledger entries and recommendation.",
         tools=[submit_ledger_tool],
         generate_content_config=genai_types.GenerateContentConfig(
-            temperature=0.1,
+            temperature=0.0,
             max_output_tokens=4096,
         ),
         retry_config=retry_cfg,

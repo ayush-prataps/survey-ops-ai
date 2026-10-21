@@ -1,0 +1,182 @@
+[
+  {
+    "batch": "ControlA",
+    "run": 1,
+    "incident_id": "inc-controla-1-1792569821",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 4,
+    "prompt_tokens": 61058,
+    "completion_tokens": 28929,
+    "total_tokens": 89987,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 153.83,
+    "ledger_count": 4
+  },
+  {
+    "batch": "ControlA",
+    "run": 2,
+    "incident_id": "inc-controla-2-1792569979",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 4,
+    "prompt_tokens": 37847,
+    "completion_tokens": 22009,
+    "total_tokens": 59856,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 114.97,
+    "ledger_count": 4
+  },
+  {
+    "batch": "ControlA",
+    "run": 3,
+    "incident_id": "inc-controla-3-1792570098",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 4,
+    "prompt_tokens": 51739,
+    "completion_tokens": 23647,
+    "total_tokens": 75386,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 133.69,
+    "ledger_count": 4
+  },
+  {
+    "batch": "ControlA",
+    "run": 4,
+    "incident_id": "inc-controla-4-1792570236",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 4,
+    "prompt_tokens": 55656,
+    "completion_tokens": 31301,
+    "total_tokens": 86957,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 154.19,
+    "ledger_count": 4
+  },
+  {
+    "batch": "ControlA",
+    "run": 5,
+    "incident_id": "inc-controla-5-1792570394",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 3,
+    "prompt_tokens": 42178,
+    "completion_tokens": 20722,
+    "total_tokens": 62900,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 100.51,
+    "ledger_count": 3
+  },
+  {
+    "batch": "ControlA",
+    "run": 6,
+    "incident_id": "inc-controla-6-1792570498",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 4,
+    "prompt_tokens": 46555,
+    "completion_tokens": 25817,
+    "total_tokens": 72372,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 136.93,
+    "ledger_count": 4
+  },
+  {
+    "batch": "ControlA",
+    "run": 7,
+    "incident_id": "inc-controla-7-1792570639",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 3,
+    "prompt_tokens": 38647,
+    "completion_tokens": 22549,
+    "total_tokens": 61196,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 106.29,
+    "ledger_count": 3
+  },
+  {
+    "batch": "PoolFault",
+    "run": 1,
+    "incident_id": "inc-poolfault-1-1792570927",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "heuristic_score": 1.0,
+    "self_reported_confidence": 0.96,
+    "iterations": 3,
+    "prompt_tokens": 30799,
+    "completion_tokens": 15677,
+    "total_tokens": 46476,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 82.85,
+    "ledger_count": 9
+  },
+  {
+    "batch": "PoolFault",
+    "run": 2,
+    "incident_id": "inc-poolfault-2-1792571013",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 4,
+    "prompt_tokens": 49245,
+    "completion_tokens": 25903,
+    "total_tokens": 75148,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 134.96,
+    "ledger_count": 12
+  },
+  {
+    "batch": "ControlB",
+    "run": 1,
+    "incident_id": "inc-controlb-1-1792571150",
+    "outcome": "abstained",
+    "root_cause": null,
+    "heuristic_score": null,
+    "self_reported_confidence": null,
+    "iterations": 2,
+    "prompt_tokens": 21208,
+    "completion_tokens": 10812,
+    "total_tokens": 32020,
+    "served_models": [
+      "deepseek-flash"
+    ],
+    "wall_time_s": 52.62,
+    "ledger_count": 6
+  }
+]

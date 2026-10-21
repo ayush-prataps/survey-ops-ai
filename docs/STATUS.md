@@ -114,6 +114,14 @@ Last updated: 2026-10-19
   - Five live pool-fault runs matched ground truth 5/5. Mean token use fell from 62,803 to 24,220 per run (61.4%); the before and after summaries are in `eval/diagnostician_live_run_summary_before.json` and `eval/diagnostician_live_run_summary.json`.
   - Available local tests: 113 passed, 1 skipped, 1 deselected with target-app integration tests excluded because their expected host ports were occupied by unrelated services.
   - Live benchmark required a temporary local MCP SDK 2.3.0 override because pinned LiteLLM 1.106.0 imports an MCP symbol absent from pinned MCP 1.28.1. The project virtual environment was restored to MCP 1.28.1 after the run.
+- Step 6f completed (Confident-Wrong Elimination via Deterministic Checkable Signals & Positive Evidence Gate):
+  - Autopsy of 2 confident-wrong runs (Control A run 4 and Pool batch 2) showed reliance on keyword matching for `predicted_signal` let `missing_index_n_plus_1` pass on healthy systems and real faults without positive proof.
+  - Replaced keyword matching with `CheckableSignal` Pydantic model (`metric_name`, `comparator`, `threshold`, `log_pattern`). Regenerated cache and DB propositions; all 18 propositions now have a checkable signal.
+  - Deterministic evaluation (`evaluate_checkable_signal_for_leader`) enforces that the leader must have positive empirical proof from cited observations (`has_positive_evidence=True`). Heuristic score capped at 0.35 without positive evidence, completely preventing ungrounded root-cause declarations.
+  - Exit gate terminates with `Outcome.abstained` when no hypothesis has positive evidence upon loop completion or LLM conclude recommendation.
+  - Enforced per-incident hard token budget (`MAX_INCIDENT_TOKEN_BUDGET`, default 60k) forcing `Outcome.budget_exhausted` when exceeded. Set Diagnostician temperature to `0.0`.
+  - Dynamic prompt builders inject full ledger and observation history each turn when `include_contents="none"` is active. Added unit tests in `tests/test_diagnostician.py` (all 124 tests passing).
+  - Validation re-run suite running 25 runs (Control A x10, Pool Fault x10, Control B x5).
 
 ## In progress
 - None

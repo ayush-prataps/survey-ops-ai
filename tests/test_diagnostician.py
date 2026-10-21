@@ -28,6 +28,7 @@ from surveyops.schemas import (
     Observation,
     Outcome,
     Proposition,
+    CheckableSignal,
 )
 from surveyops.agents.diagnostician.schemas import (
     ExitDecision,
@@ -52,8 +53,8 @@ from surveyops.agents.diagnostician.agent import (
 # ── 1. Exit Logic Unit Tests ──────────────────────────────────────────────────
 
 class TestExitLogic:
-    def test_root_cause_requires_all_three_criteria(self):
-        """Root cause requires: confidence >= threshold, margin >= margin_threshold, and disconfirming test."""
+    def test_root_cause_requires_positive_evidence_and_falsification(self):
+        """Root cause requires: positive evidence from checkable signal, disconfirming test passed, margin, and threshold."""
         hyps = [
             HypothesisItem(
                 hypothesis_id="SM-007",
@@ -61,6 +62,7 @@ class TestExitLogic:
                 description="Pool exhaustion",
                 confidence=0.88,
                 status="active",
+                supporting_proposition_id="SM-007",
             ),
             HypothesisItem(
                 hypothesis_id="SM-006",
@@ -71,8 +73,60 @@ class TestExitLogic:
             ),
         ]
         tested_disconfirming = {"SM-007"}
+        prop = Proposition(
+            proposition_id="SM-007",
+            endpoint="POST /orders",
+            failure_mode=FailureMode.connection_pool_exhaustion,
+            justification="Pool saturation",
+            predicted_signal="Pool utilization ratio reaches 1.0",
+            graph_edge_ref="orders -> pool",
+            checkable_signal=CheckableSignal(
+                type="metric",
+                metric_name="pool_utilization_ratio",
+                comparator=">=",
+                threshold=0.8,
+            ),
+        )
+        ledger = [
+            LedgerEntry(
+                iteration=1,
+                hypothesis_id="SM-007",
+                evidence_for=["[req-pool-1:pool_utilization_ratio] pool_utilization_ratio=1.0 >= 0.8"],
+                evidence_against=[],
+                confidence=0.88,
+                status="active",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="pool_utilization_ratio < 0.5",
+                disconfirming_justification="pool_utilization_ratio is 1.0",
+            ),
+            LedgerEntry(
+                iteration=2,
+                hypothesis_id="SM-007",
+                evidence_for=["[req-pool-2:pool_utilization_ratio] pool_utilization_ratio=1.0"],
+                evidence_against=[],
+                confidence=0.88,
+                status="dominant",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="pool_utilization_ratio < 0.5",
+                disconfirming_justification="pool_utilization_ratio is 1.0",
+            ),
+        ]
+        observations = [
+            Observation(
+                request_id="req-pool-1",
+                source="prometheus",
+                data={"pool_utilization_ratio": 1.0, "status": "success"},
+                collected_at=datetime.now(timezone.utc),
+            ),
+            Observation(
+                request_id="req-pool-2",
+                source="prometheus",
+                data={"pool_utilization_ratio": 1.0, "status": "success"},
+                collected_at=datetime.now(timezone.utc),
+            ),
+        ]
 
-        # 1. Meets all criteria (0.88 >= 0.80, margin 0.33 >= 0.20, tested=True)
+        # Meets all criteria (positive evidence verified, disconfirming test passed, margin >= 0.20, conf >= 0.80)
         decision = evaluate_exit_conditions(
             hypotheses=hyps,
             tested_disconfirming_hypotheses=tested_disconfirming,
@@ -80,11 +134,14 @@ class TestExitLogic:
             max_iterations=5,
             confidence_threshold=0.80,
             confidence_margin=0.20,
+            ledger=ledger,
+            propositions=[prop],
+            observations=observations,
         )
         assert decision.should_exit is True
         assert decision.outcome == Outcome.root_cause
         assert decision.top_hypothesis.hypothesis_id == "SM-007"
-        assert decision.confidence == 0.88
+        assert decision.confidence >= 0.80
 
     def test_cannot_declare_root_cause_without_disconfirming_experiment(self):
         """Even with high confidence and big margin, must NOT exit root_cause if no disconfirming test was run."""
@@ -149,35 +206,125 @@ class TestExitLogic:
         assert decision.should_exit is False
         assert "margin=0.10" in decision.reason
 
-    def test_budget_exhausted_at_max_iterations(self):
-        """When reaching MAX_LOOP_ITERATIONS without meeting root_cause criteria, return budget_exhausted."""
+    def test_abstain_when_no_positive_evidence_on_max_iterations(self):
+        """Leader without positive evidence from checkable signal MUST abstain, not declare root_cause or budget_exhausted."""
         hyps = [
             HypothesisItem(
-                hypothesis_id="SM-007",
-                failure_mode=FailureMode.connection_pool_exhaustion,
-                description="Pool exhaustion",
-                confidence=0.65,  # Below 0.80
+                hypothesis_id="SM-014",
+                failure_mode=FailureMode.missing_index_n_plus_1,
+                description="Missing index",
+                confidence=0.70,
                 status="active",
+                supporting_proposition_id="SM-014",
             ),
             HypothesisItem(
-                hypothesis_id="SM-006",
-                failure_mode=FailureMode.race_condition_idempotency,
-                description="Race condition",
-                confidence=0.50,
+                hypothesis_id="SM-013",
+                failure_mode=FailureMode.connection_pool_exhaustion,
+                description="Pool exhaustion",
+                confidence=0.40,
                 status="active",
             ),
         ]
-        tested_disconfirming = {"SM-007"}
+        tested_disconfirming = {"SM-014"}
+        prop = Proposition(
+            proposition_id="SM-014",
+            endpoint="POST /payment/charge",
+            failure_mode=FailureMode.missing_index_n_plus_1,
+            justification="Slow idempotency lookup",
+            predicted_signal="Slow query logs",
+            graph_edge_ref="payment -> session",
+            checkable_signal=CheckableSignal(
+                type="log_pattern",
+                log_pattern="slow query|seq scan|rows examined",
+            ),
+        )
+        # Observations only contain normal logs and 0.0 pool ratio
+        observations = [
+            Observation(
+                request_id="req-obs-1",
+                source="prometheus",
+                data={"pool_utilization_ratio": 0.0},
+                collected_at=datetime.now(timezone.utc),
+            ),
+            Observation(
+                request_id="req-obs-2",
+                source="docker_logs",
+                data={"lines": ["POST /payment/charge 200 OK", "Normal traffic"]},
+                collected_at=datetime.now(timezone.utc),
+            ),
+        ]
+        ledger = [
+            LedgerEntry(
+                iteration=1,
+                hypothesis_id="SM-014",
+                evidence_for=["[req-obs-1:pool_utilization_ratio] pool_utilization_ratio is 0.0"],
+                evidence_against=[],
+                confidence=0.70,
+                status="active",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="pool_utilization_ratio > 0.8",
+                disconfirming_justification="pool ratio is 0",
+            )
+        ]
 
         decision = evaluate_exit_conditions(
             hypotheses=hyps,
             tested_disconfirming_hypotheses=tested_disconfirming,
             iteration=5,
             max_iterations=5,
+            ledger=ledger,
+            propositions=[prop],
+            observations=observations,
         )
         assert decision.should_exit is True
-        assert decision.outcome == Outcome.budget_exhausted
-        assert "budget exhausted" in decision.reason.lower()
+        assert decision.outcome == Outcome.abstained
+        assert "without positive empirical evidence" in decision.reason
+
+    def test_propositions_without_checkable_signal_cannot_win(self):
+        """Propositions without a machine-checkable signal cannot win root_cause."""
+        hyps = [
+            HypothesisItem(
+                hypothesis_id="SM-NO-SIGNAL",
+                failure_mode=FailureMode.missing_index_n_plus_1,
+                description="No signal prop",
+                confidence=0.90,
+                status="active",
+                supporting_proposition_id="SM-NO-SIGNAL",
+            )
+        ]
+        prop = Proposition(
+            proposition_id="SM-NO-SIGNAL",
+            endpoint="POST /payment/charge",
+            failure_mode=FailureMode.missing_index_n_plus_1,
+            justification="No checkable signal",
+            predicted_signal="Some text signal",
+            graph_edge_ref="payment -> db",
+            checkable_signal=None,  # Missing checkable signal!
+        )
+        ledger = [
+            LedgerEntry(
+                iteration=1,
+                hypothesis_id="SM-NO-SIGNAL",
+                evidence_for=["[req-1:data] observed"],
+                evidence_against=[],
+                confidence=0.90,
+                status="active",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="disproved",
+                disconfirming_justification="none",
+            )
+        ]
+        decision = evaluate_exit_conditions(
+            hypotheses=hyps,
+            tested_disconfirming_hypotheses={"SM-NO-SIGNAL"},
+            iteration=2,
+            max_iterations=5,
+            ledger=ledger,
+            propositions=[prop],
+            observations=[Observation(request_id="req-1", source="metrics", data={}, collected_at=datetime.now(timezone.utc))],
+        )
+        assert decision.should_exit is False
+        assert decision.outcome != Outcome.root_cause
 
     def test_abstained_when_all_hypotheses_ruled_out(self):
         """If empirical tests rule out all candidate hypotheses, return abstained."""
@@ -481,4 +628,147 @@ class TestBackgroundTrigger:
         # Invariant: incident must be closed in finally block!
         assert dedup_store.is_open("payment", "/payment/charge") is False
         assert dedup_store.get_open_incident_id("payment", "/payment/charge") is None
+
+
+# ── 7. Prompt Builders Full Ledger & Observations (Subtask 0) ─────────────────
+
+class TestPromptBuildersFullLedgerAndObservations:
+    def test_prompt_builders_include_full_ledger_and_all_observations(self):
+        """
+        Confirms that both prompt builders include the full history of ledger entries
+        across all prior iterations and all collected observations when include_contents='none'.
+        """
+        payload = InvestigatePayload(
+            alert="HighP99Latency",
+            service="payment",
+            endpoint="/payment/charge",
+            metric="http_request_duration_seconds",
+            threshold=0.5,
+            window_start=datetime.now(timezone.utc),
+        )
+        propositions = [
+            Proposition(
+                proposition_id="SM-013",
+                endpoint="/payment/charge",
+                failure_mode=FailureMode.connection_pool_exhaustion,
+                justification="Pool saturation",
+                predicted_signal="Pool utilization ratio reaches 1.0",
+                graph_edge_ref="payment -> pool",
+                checkable_signal=CheckableSignal(
+                    type="metric",
+                    metric_name="pool_utilization_ratio",
+                    comparator=">=",
+                    threshold=0.8,
+                ),
+            )
+        ]
+        hypotheses = [
+            HypothesisItem(
+                hypothesis_id="SM-013",
+                failure_mode=FailureMode.connection_pool_exhaustion,
+                description="Pool saturation",
+                confidence=0.85,
+                status="dominant",
+            ),
+            HypothesisItem(
+                hypothesis_id="SM-014",
+                failure_mode=FailureMode.missing_index_n_plus_1,
+                description="Unindexed query scan",
+                confidence=0.35,
+                status="active",
+            ),
+        ]
+        ledger = [
+            LedgerEntry(
+                iteration=1,
+                hypothesis_id="SM-013",
+                evidence_for=["[req-iter1-metrics:pool_utilization_ratio] pool utilization is 1.0"],
+                evidence_against=[],
+                confidence=0.75,
+                status="active",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="pool_utilization_ratio < 0.5",
+                disconfirming_justification="pool utilization was 1.0",
+            ),
+            LedgerEntry(
+                iteration=2,
+                hypothesis_id="SM-013",
+                evidence_for=["[req-iter2-logs:service] QueuePool timeout logged"],
+                evidence_against=[],
+                confidence=0.85,
+                status="dominant",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="no queue errors",
+                disconfirming_justification="QueuePool timeout error found",
+            ),
+        ]
+        obs1 = Observation(
+            request_id="req-iter1-metrics",
+            source="prometheus",
+            data={"pool_utilization_ratio": 1.0, "status": "success"},
+            collected_at=datetime.now(timezone.utc),
+        )
+        obs2 = Observation(
+            request_id="req-iter2-logs",
+            source="docker_logs",
+            data={"service": "payment", "logs": "TimeoutError: QueuePool limit reached\nNormal line"},
+            collected_at=datetime.now(timezone.utc),
+            contains_untrusted_text=True,
+        )
+        observations = [obs1, obs2]
+
+        # 1. Test build_hypothesis_and_experiment_prompt
+        hyp_prompt = build_hypothesis_and_experiment_prompt(
+            incident=payload,
+            propositions=propositions,
+            hypotheses=hypotheses,
+            ledger=ledger,
+            last_observation=obs2,
+            observations=observations,
+            iteration=3,
+            max_iterations=5,
+        )
+
+        assert "PREVIOUS LEDGER ENTRIES:" in hyp_prompt
+        assert "Iteration 1 [SM-013]" in hyp_prompt
+        assert "Iteration 2 [SM-013]" in hyp_prompt
+        assert "req-iter1-metrics:pool_utilization_ratio" in hyp_prompt
+        assert "req-iter2-logs:service" in hyp_prompt
+
+        assert "OBSERVATIONS RECORD:" in hyp_prompt
+        assert "Request ID: req-iter1-metrics" in hyp_prompt
+        assert "pool_utilization_ratio" in hyp_prompt
+        assert "Request ID: req-iter2-logs" in hyp_prompt
+        assert "<UNTRUSTED_SYSTEM_DATA>" in hyp_prompt
+        assert "TimeoutError: QueuePool limit reached" in hyp_prompt
+
+        # 2. Test build_ledger_evaluation_prompt
+        pending_req = ExperimentRequest(
+            request_id="req-iter3-test",
+            hypothesis_id="SM-013",
+            experiment_type=ExperimentType.query_metrics,
+            params={"template": "pool_in_use", "service": "payment"},
+            rationale="Verify pool utilization persistence",
+            disconfirming_if="pool_utilization_ratio < 0.2",
+        )
+        ledger_prompt = build_ledger_evaluation_prompt(
+            incident=payload,
+            hypotheses=hypotheses,
+            pending_request=pending_req,
+            last_observation=obs2,
+            observations=observations,
+            ledger=ledger,
+            iteration=3,
+            max_iterations=5,
+        )
+
+        assert "PREVIOUS LEDGER ENTRIES:" in ledger_prompt
+        assert "Iteration 1 [SM-013]" in ledger_prompt
+        assert "Iteration 2 [SM-013]" in ledger_prompt
+        assert "OBSERVATIONS RECORD:" in ledger_prompt
+        assert "Request ID: req-iter1-metrics" in ledger_prompt
+        assert "Request ID: req-iter2-logs" in ledger_prompt
+        assert "EXPERIMENT EXECUTED (Request ID: req-iter3-test):" in ledger_prompt
+        assert 'Original disconfirming_if to quote verbatim: "pool_utilization_ratio < 0.2"' in ledger_prompt
+
 

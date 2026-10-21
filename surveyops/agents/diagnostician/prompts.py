@@ -104,6 +104,39 @@ def _format_evidence_list(items: list[str]) -> list[str]:
     return res
 
 
+def format_ledger_for_prompt(ledger: list[LedgerEntry] | None) -> str:
+    """Formats full ledger history across all iterations."""
+    if not ledger:
+        return "No previous ledger entries."
+    lines = []
+    for e in ledger:
+        lines.append(
+            f"Iteration {e.iteration} [{e.hypothesis_id}] status={e.status} conf={e.confidence:.2f} "
+            f"disconfirmed={e.disconfirming_condition_met} "
+            f"(justification: {e.disconfirming_justification or 'none'})\n"
+            f"  evidence_for: {_format_evidence_list(e.evidence_for)}\n"
+            f"  evidence_against: {_format_evidence_list(e.evidence_against)}"
+        )
+    return "\n".join(lines)
+
+
+def format_observations_record(
+    observations: list[Observation] | None = None,
+    last_observation: Observation | None = None,
+) -> str:
+    """Formats full sequence of observations collected during this incident."""
+    obs_list: list[Observation] = list(observations or [])
+    if last_observation and not any(o.request_id == last_observation.request_id for o in obs_list):
+        obs_list.append(last_observation)
+    if not obs_list:
+        return "No observations recorded yet."
+
+    rendered = []
+    for obs in obs_list:
+        rendered.append(format_observation_for_prompt(obs))
+    return "\n\n--------------------\n\n".join(rendered)
+
+
 def format_observation_for_prompt(obs: Observation | None) -> str:
     """Formats an Observation for the LLM prompt, enforcing untrusted data delimiters and log line caps."""
     if obs is None:
@@ -135,9 +168,10 @@ def build_hypothesis_and_experiment_prompt(
     propositions: list[Proposition],
     hypotheses: list[HypothesisItem],
     ledger: list[LedgerEntry],
-    last_observation: Observation | None,
-    iteration: int,
-    max_iterations: int,
+    last_observation: Observation | None = None,
+    observations: list[Observation] | None = None,
+    iteration: int = 1,
+    max_iterations: int = 5,
 ) -> str:
     """Builds prompt for the hypothesis generation & experiment selection step."""
     props_text = "\n".join(
@@ -150,12 +184,8 @@ def build_hypothesis_and_experiment_prompt(
         for h in hypotheses
     ) or "Initial seed needed."
 
-    ledger_text = "\n".join(
-        f"Iteration {e.iteration} [{e.hypothesis_id}]: conf={e.confidence:.2f}, disconfirmed={e.disconfirming_condition_met}, for={_format_evidence_list(e.evidence_for)}, against={_format_evidence_list(e.evidence_against)}"
-        for e in ledger
-    ) or "No previous iterations."
-
-    obs_text = format_observation_for_prompt(last_observation)
+    ledger_text = format_ledger_for_prompt(ledger)
+    obs_record_text = format_observations_record(observations, last_observation)
 
     alert = getattr(incident, "alert", None) or (incident.get("alert") if isinstance(incident, dict) else "unknown")
     service = getattr(incident, "service", None) or (incident.get("service") if isinstance(incident, dict) else "unknown")
@@ -181,14 +211,15 @@ CURRENT HYPOTHESES (Iteration {iteration}/{max_iterations}):
 PREVIOUS LEDGER ENTRIES:
 {ledger_text}
 
-LATEST OBSERVATION:
-{obs_text}
+OBSERVATIONS RECORD:
+{obs_record_text}
 
 TASK:
 1. Update candidate hypotheses. Retain exact hypothesis_id values from above (do NOT rename them). Maintain leading and at least one rival hypothesis.
 2. Pick ONE next experiment (query_metrics, fetch_logs, or load_burst) to test or falsify the leading hypothesis.
-   - For query_metrics, valid templates: p99_latency, error_rate, request_rate, pool_in_use, pool_capacity.
-   - Pool gauges (pool_in_use, pool_max_in_use, pool_utilization_ratio) and logs are faster signals than p99 latency.
+   - For query_metrics, valid template MUST be one of: pool_in_use, p99_latency, error_rate, request_rate, pool_capacity.
+   - Note: 'pool_in_use' query returns pool_in_use, pool_max_in_use, pool_capacity, and pool_utilization_ratio. Do NOT use 'pool_utilization_ratio' as template name; use 'pool_in_use'.
+   - Pool gauges and fetch_logs are faster signals than p99 latency.
 3. Formulate disconfirming_if: clearly specify what empirical observation outcome would DISPROVE the leading hypothesis.
 """
 
@@ -197,9 +228,11 @@ def build_ledger_evaluation_prompt(
     incident: InvestigatePayload | dict | None,
     hypotheses: list[HypothesisItem],
     pending_request: Any,
-    last_observation: Observation | None,
-    iteration: int,
-    max_iterations: int,
+    last_observation: Observation | None = None,
+    observations: list[Observation] | None = None,
+    ledger: list[LedgerEntry] | None = None,
+    iteration: int = 1,
+    max_iterations: int = 5,
 ) -> str:
     """Builds prompt for the ledger update & evidence synthesis step."""
     alert = getattr(incident, "alert", None) or (incident.get("alert") if isinstance(incident, dict) else "unknown")
@@ -214,7 +247,9 @@ def build_ledger_evaluation_prompt(
     req_id = req_dict.get("request_id", "req-unknown")
     disconfirm_text = req_dict.get("disconfirming_if", "")
     req_text = json.dumps(req_dict, indent=2)
-    obs_text = format_observation_for_prompt(last_observation)
+
+    ledger_text = format_ledger_for_prompt(ledger)
+    obs_record_text = format_observations_record(observations, last_observation)
 
     return f"""INCIDENT: {alert} on {service} ({endpoint})
 CURRENT ITERATION: {iteration}/{max_iterations}
@@ -226,8 +261,11 @@ EXPERIMENT EXECUTED (Request ID: {req_id}):
 {req_text}
 Original disconfirming_if to quote verbatim: "{disconfirm_text}"
 
-OBSERVATION RECEIVED:
-{obs_text}
+PREVIOUS LEDGER ENTRIES:
+{ledger_text}
+
+OBSERVATIONS RECORD:
+{obs_record_text}
 
 TASK:
 Synthesize the observation against the hypotheses by invoking submit_ledger_update with:
