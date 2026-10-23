@@ -190,3 +190,42 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - **Positive Evidence Exit Condition:** Declaring root cause requires positive empirical evidence, not merely surviving falsification. If the loop terminates or LLM recommends conclude/abstain without positive evidence, the system deterministically exits with `Outcome.abstained`.
 - **Token Budget & Determinism:** Configured hard token budget (`MAX_INCIDENT_TOKEN_BUDGET`, default 60k) forcing `Outcome.budget_exhausted` when exceeded. Set Diagnostician agents to `temperature=0.0`.
 - **Full History Injection:** Custom prompt builders format full ledger history and all cited observations into prompt instructions each turn, ensuring full context even with ADK `include_contents="none"`.
+
+## 2026-10-21: Diagnostician Token Reduction, Prefix Caching, and Healthy Early-Abstain
+- **Token Inflation Analysis:** Evaluator completions (2.4k–4.3k tokens/call with internal reasoning tokens) and accumulating prompt history (observation JSON and verbose ledger growing from 2.1k to 6.8k tokens) dominated token usage.
+- **Compact Observation Digest:** Added `format_observation_digest` generating 3–5 line digests with explicit `[Citable fields for {req_id}: ...]`. Container logs filtered to signal-bearing lines and capped at 10 lines. Raw observations remain fully stored in state for deterministic verification.
+- **Shortened Ledger History:** Post-iteration 1 ledger prompts condense past hypotheses into 1-line summaries (`- [{id}] status=..., conf=..., disconfirmed=...: {1-line reason}`), cutting multi-turn prompt inflation by >70%.
+- **Prefix Caching & Prompt Restructuring:** Trimmed static instructions and placed them FIRST, with variable incident and observation context LAST. Enabled DeepSeek prompt prefix caching (`cached_tokens` confirmed in API telemetry: 4.8k to 20.9k cached tokens per run).
+- **Reasoning Tokens:** Telemetry confirms `deepseek/deepseek-flash` generates non-thinking and thinking reasoning tokens under the hood (`reasoning_tokens` tracked: 6.3k to 30.3k tokens per faulted run).
+- **Deterministic CheckableSignal Pre-Probes & Early-Abstain:**
+  - Iteration 1 runs deterministic metric (`pool_in_use`) and log probes through the Runner before the first LLM call.
+  - Healthy systems (`check_system_healthy`: no saturation, no error logs, normal latency) exit immediately with `Outcome.abstained`, 0 LLM calls, 0 tokens (saving ~75k tokens per healthy run).
+  - In faulted systems, initial observations seed iteration 1 directly, saving 1 exploratory loop iteration.
+
+## 2026-10-23: Diagnostician Regression Isolation, Thinking Tokens, and Ablation Study (token-reduction-v2)
+- **DeepSeek Reasoning/Thinking Tokens:** DeepSeek reasoning/thinking is disabled via `extra_body={"thinking": {"type": "disabled"}}` in LiteLLM/ADK `GenerateContentConfig`. Applied strictly to Diagnostician. Telemetry confirmed 0 reasoning tokens across all faulted runs (down from ~30k reasoning tokens).
+- **Early-Abstain Replay & Bug Fix:** Replaying `check_system_healthy` against historical observations revealed 3 false early-abstains on active faults (early-onset pool fault with clean logs, sub-threshold pool with empty logs, and Control B 5xx with empty logs). Fixed `check_system_healthy` to check p99 latency (>500ms), error rates (>0), and require non-empty container telemetry before declaring a system healthy (0/6 false abstains on replay).
+- **Ablation Study on Pool Fault (3 runs each, 9 total):**
+  - *(a) Digests only:* 0/3 root cause (3/3 budget_exhausted; tokens: 61.2k, 70.2k, 69.0k, mean 66.8k). Full ledger history without short ledger caused token budget exhaustion.
+  - *(b) Short ledger only:* 1/3 root cause (`connection_pool_exhaustion` diagnosed at 0.91 confidence in 4 iterations using 49.5k tokens), 2/3 budget_exhausted (69.7k, 58.2k tokens).
+  - *(c) Pre-probes only:* 0/3 root cause (2 budget_exhausted, 1 abstained; tokens: 63.3k, 53.2k, 65.0k, mean 60.5k). Premature pre-probes at T=0 sampled sub-threshold metrics (pool_in_use=4/5, lines=0) before background traffic saturated the pool, causing the LLM to disconfirm and rule out the true root cause (`SM-014`/`SM-016`) on iteration 1.
+- **Root Cause of Regression:** Pre-probes (c) broke diagnosis by injecting premature sub-threshold data that permanently disconfirmed the true fault.
+
+## 2026-10-23: Pool-Fault Regression Bisect Across Commits A, B, and C
+- **Bisect Matrix (3 pool-fault runs each, thinking disabled):**
+  - **(A) `827d225` (token-usage-fix):** 2/3 diagnosed `connection_pool_exhaustion` (66.7%). Run 1 abstained at iter 6 (confidence 0.70 < 0.80, 61.3k tok); Runs 2 & 3 diagnosed root_cause in iters 1 & 2 (10.2k & 23.5k tok). 0 validation rejections.
+  - **(B) `00e6228` (checkable-signal / positive evidence):** 1/3 diagnosed `connection_pool_exhaustion` (33.3%). Run 2 diagnosed root_cause in iter 3 (46.4k tok); Runs 1 & 3 budget_exhausted (iters 5 & 4, 71.5k & 60.4k tok, hard budget 60k). 0 validation rejections.
+  - **(C) `token-reduction-v2` (reverted baseline):** 1/3 diagnosed `connection_pool_exhaustion` (33.3%). Run 1 diagnosed root_cause in iter 3 (36.4k tok); Runs 2 & 3 budget_exhausted (iters 5 & 5, 69.7k & 63.9k tok, hard budget 60k and margin < 0.20). 0 validation rejections.
+- **First Degradation Point:** Commit B (`00e6228`) where hard 60k token budget was introduced alongside full-history prompt expansion, terminating runs before margin/evidence thresholds could be met.
+- **Hypothesis Ruling-Out Behavior & Reactivation Proposal:**
+  - `ruled_out` is currently enforced permanently in `exit_logic.py` whenever `any(disconfirming_condition_met)` is true for a hypothesis ledger entry, capping confidence at 0.20.
+  - Proposed rule (generic, not applied): Rule out only on `window_max` metric evidence or 2 independent disconfirming observations across distinct iterations; allow reactivation (`ruled_out` -> `active`) if subsequent empirical observations provide verified positive signal evidence.
+
+## 2026-10-23: Deterministic Ruling-Out Fix, CheckableSignal Reactivation, 100k Budget, and Convergence Stop
+- **Ruling-Out Window-Max & 2-Observation Requirement:** Replaced naive single-sample disconfirmation in `exit_logic.py`. A hypothesis may only be marked `ruled_out` if supported by verified `window_max` metric evidence (e.g. `pool_max_in_use < cap` over time window) or at least 2 independent disconfirming observations. Single instantaneous samples can no longer rule out hypotheses.
+- **CheckableSignal Reactivation:** When an observation satisfies a hypothesis's machine-checkable signal, any previously `ruled_out` status is deterministically reactivated to `active` (and confidence uncapped). Every status change is logged with the triggering observation ID.
+- **Budget Cap & Convergence Stop:** Configured 100k token budget cap (`MAX_INCIDENT_TOKEN_BUDGET=100000`). Added deterministic convergence stop exiting when the top leader and margin remain stable for 2 consecutive iterations: yields `root_cause` if positive evidence is verified, or `abstained` if unverified.
+- **Evaluation Validation (6 Pool Runs + 3 Control B Runs):**
+  - Pool Fault: 6 / 6 correct `connection_pool_exhaustion` diagnoses (100.0%, 0 budget exhaustions, mean 24,857 tokens).
+  - Control B: 3 / 3 correct abstains (100.0%, 0 confident-wrong, mean 5,064 tokens).
+  - Confident-Wrong: 0 / 9 (0.0%). Mean tokens overall: 18,259 tokens (cut by ~70%).

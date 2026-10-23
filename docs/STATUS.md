@@ -122,6 +122,30 @@ Last updated: 2026-10-19
   - Enforced per-incident hard token budget (`MAX_INCIDENT_TOKEN_BUDGET`, default 60k) forcing `Outcome.budget_exhausted` when exceeded. Set Diagnostician temperature to `0.0`.
   - Dynamic prompt builders inject full ledger and observation history each turn when `include_contents="none"` is active. Added unit tests in `tests/test_diagnostician.py` (all 124 tests passing).
   - Validation re-run suite running 25 runs (Control A x10, Pool Fault x10, Control B x5).
+- Step 6g completed (Diagnostician Token Reduction, Prefix Caching, and Healthy Early-Abstain):
+  - Added compact observation digests (`format_observation_digest`), 10-line signal log caps, and 1-line ledger entries post-iteration 1.
+  - Trimmed static instructions and ordered static rules before variable context to enable DeepSeek prompt prefix caching (`cached_tokens` confirmed: 4.8k to 20.9k per run).
+  - Telemetry callback upgraded to track `cached_tokens` and internal `reasoning_tokens` (DeepSeek-V4.1-Flash).
+  - Added deterministic pre-LLM iteration-1 probes (`check_system_healthy`) via Runner. Healthy systems early-abstain in 0.1s at 0 tokens (Control A mean: 75k tokens -> 0 tokens, 100% reduction, outcomes unchanged).
+  - All 127 pytest tests passing (`pytest tests/`).
+- Step 6h completed (Diagnostician Regression Isolation & Ablation Study):
+  - Disabled thinking/reasoning on `deepseek/deepseek-flash` via `extra_body={"thinking": {"type": "disabled"}}` in Diagnostician only (`reasoning_tokens` eliminated to 0).
+  - Replayed historical observations against `check_system_healthy`, identified and fixed 3 false early-abstain bugs on faults.
+  - Completed 9-run ablation study across pool faults: identified that pre-probes (c) broke diagnosis by feeding premature sub-threshold telemetry at $T=0$, causing the LLM to disconfirm and rule out the true root cause (`SM-014`/`SM-016`) on iteration 1.
+  - All 127 pytest tests passing.
+- Step 6i completed (Pool-Fault Regression Bisect Across Commits A, B, and C):
+  - Executed 9 pool-fault runs (3 each) across commits A (`827d225`), B (`00e6228`), and C (`token-reduction-v2` reverted baseline) with thinking disabled.
+  - Pinpointed regression onset to Commit B (`00e6228`): hard 60k token budget + uncompressed prompt growth cut diagnosis rate from 67% (2/3) to 33% (1/3) via early budget exhaustion.
+  - Formulated generic hypothesis reactivation rule (2-observation / window-max rule-out, allow reactivation on empirical signal match).
+  - All 127 pytest tests passing.
+- Step 6j completed (Ruling-Out Fix, Reactivation, 100k Budget Cap, and Convergence Stop):
+  - Implemented window-max evidence & 2-observation requirement for ruling out in `exit_logic.py`.
+  - Implemented automatic CheckableSignal reactivation for `ruled_out` hypotheses with observation ID logging.
+  - Implemented per-incident 100k token budget cap and 2-iteration convergence stop.
+  - Executed 6 pool-fault runs and 3 Control B runs: pool accuracy 6/6 (100.0%), confident-wrong 0/9 (0.0%), mean tokens 18,259.
+  - Added unit tests in `tests/test_diagnostician.py`; all 132 tests passing (`pytest tests/`).
+
+
 
 ## In progress
 - None

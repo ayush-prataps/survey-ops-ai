@@ -1,0 +1,143 @@
+[
+  {
+    "batch": "PoolFault",
+    "run": 1,
+    "incident_id": "inc-eval-poolfault-run1-1792779701",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "confidence": 0.8,
+    "iterations": 4,
+    "prompt_tokens": 33669,
+    "completion_tokens": 11105,
+    "total_tokens": 44774,
+    "wall_time_s": 47.68,
+    "status_changes": []
+  },
+  {
+    "batch": "PoolFault",
+    "run": 2,
+    "incident_id": "inc-eval-poolfault-run2-1792779790",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "confidence": 0.86,
+    "iterations": 2,
+    "prompt_tokens": 13996,
+    "completion_tokens": 6118,
+    "total_tokens": 20114,
+    "wall_time_s": 24.37,
+    "status_changes": []
+  },
+  {
+    "batch": "PoolFault",
+    "run": 3,
+    "incident_id": "inc-eval-poolfault-run3-1792779855",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "confidence": 0.8,
+    "iterations": 3,
+    "prompt_tokens": 18152,
+    "completion_tokens": 7813,
+    "total_tokens": 25965,
+    "wall_time_s": 38.1,
+    "status_changes": []
+  },
+  {
+    "batch": "PoolFault",
+    "run": 4,
+    "incident_id": "inc-eval-poolfault-run4-1792779933",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "confidence": 0.83,
+    "iterations": 2,
+    "prompt_tokens": 14353,
+    "completion_tokens": 6693,
+    "total_tokens": 21046,
+    "wall_time_s": 26.57,
+    "status_changes": []
+  },
+  {
+    "batch": "PoolFault",
+    "run": 5,
+    "incident_id": "inc-eval-poolfault-run5-1792780001",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "confidence": 0.9,
+    "iterations": 2,
+    "prompt_tokens": 14984,
+    "completion_tokens": 5937,
+    "total_tokens": 20921,
+    "wall_time_s": 24.6,
+    "status_changes": []
+  },
+  {
+    "batch": "PoolFault",
+    "run": 6,
+    "incident_id": "inc-eval-poolfault-run6-1792780066",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "confidence": 0.84,
+    "iterations": 2,
+    "prompt_tokens": 11044,
+    "completion_tokens": 5276,
+    "total_tokens": 16320,
+    "wall_time_s": 21.76,
+    "status_changes": []
+  },
+  {
+    "batch": "ControlB",
+    "run": 1,
+    "incident_id": "inc-eval-controlb-run1-1792780090",
+    "outcome": "abstained",
+    "root_cause": null,
+    "confidence": null,
+    "iterations": 2,
+    "prompt_tokens": 10565,
+    "completion_tokens": 4628,
+    "total_tokens": 15193,
+    "wall_time_s": 20.09,
+    "status_changes": [
+      {
+        "hypothesis_id": "SM-014",
+        "from": "active",
+        "to": "ruled_out",
+        "observation_id": "req-1-pool-in-use",
+        "reason": "Ruled out on window-max evidence in [req-1-pool-in-use]: pool_max_in_use=0.0/5.0 (ratio 0.00 < 0.60 over 15.0s)"
+      },
+      {
+        "hypothesis_id": "SM-016",
+        "from": "active",
+        "to": "ruled_out",
+        "observation_id": "req-1-pool-in-use",
+        "reason": "Ruled out on window-max evidence in [req-1-pool-in-use]: pool_max_in_use=0.0/5.0 (ratio 0.00 < 0.60 over 15.0s)"
+      }
+    ]
+  },
+  {
+    "batch": "ControlB",
+    "run": 2,
+    "incident_id": "inc-eval-controlb-run2-1792780113",
+    "outcome": "abstained",
+    "root_cause": null,
+    "confidence": 0.0,
+    "iterations": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "wall_time_s": 0.11,
+    "status_changes": []
+  },
+  {
+    "batch": "ControlB",
+    "run": 3,
+    "incident_id": "inc-eval-controlb-run3-1792780116",
+    "outcome": "abstained",
+    "root_cause": null,
+    "confidence": 0.0,
+    "iterations": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "wall_time_s": 0.1,
+    "status_changes": []
+  }
+]

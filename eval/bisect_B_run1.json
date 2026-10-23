@@ -1,0 +1,321 @@
+{
+  "run_label": "B-run1",
+  "incident_id": "inc-bisect-B-run1-1792775834",
+  "outcome": "budget_exhausted",
+  "root_cause": null,
+  "confidence": null,
+  "iterations": 5,
+  "wall_time_s": 66.25,
+  "validation_rejections_count": 0,
+  "validation_rejections": [],
+  "gate_block_reason": "ExitDecision (iteration 5/6): should_exit=True, outcome=budget_exhausted, reason=Hard token budget exhausted (71457/60000 tokens used).",
+  "per_iteration_tokens": {
+    "1": {
+      "prompt_tokens": 4355,
+      "completion_tokens": 2161,
+      "total_tokens": 6516,
+      "calls": 2
+    },
+    "2": {
+      "prompt_tokens": 6131,
+      "completion_tokens": 2431,
+      "total_tokens": 8562,
+      "calls": 2
+    },
+    "3": {
+      "prompt_tokens": 7824,
+      "completion_tokens": 2560,
+      "total_tokens": 10384,
+      "calls": 2
+    },
+    "4": {
+      "prompt_tokens": 17338,
+      "completion_tokens": 3603,
+      "total_tokens": 20941,
+      "calls": 3
+    },
+    "5": {
+      "prompt_tokens": 20738,
+      "completion_tokens": 4316,
+      "total_tokens": 25054,
+      "calls": 3
+    }
+  },
+  "total_prompt_tokens": 56386,
+  "total_completion_tokens": 15071,
+  "total_tokens": 71457,
+  "status_history": {
+    "SM-014": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.6 (not < 0.5) and pool_in_use=3.0 vs pool_capacity=5.0 (not far from capacity), so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-1-pool-in-use:pool_utilization_ratio] 0.6 \u2014 moderately elevated pool usage during the latency window, consistent with some connection pressure",
+          "[exp-1-pool-in-use:pool_max_in_use] 3.0 of 5.0 capacity \u2014 pool reached 60% of capacity, leaving limited headroom"
+        ],
+        "evidence_against": [
+          "[exp-1-pool-in-use:pool_in_use] 3.0 is below pool_capacity 5.0 \u2014 pool was not saturated, so full exhaustion is not demonstrated"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 (>= 0.5) and pool_in_use=4.0 of 5.0 capacity \u2014 utilization is high and trending toward capacity, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 pool usage rose from 0.6 (iter 1) to 0.8, trending toward capacity during the latency window",
+          "[exp-2-pool-timeseries:pool_in_use] 4.0 of 5.0 capacity \u2014 only 1 connection of headroom remains, consistent with charge_payment() holding connections while coordinating idempotency and charge execution"
+        ],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_in_use] 4.0 < pool_capacity 5.0 \u2014 pool not yet fully saturated, so exhaustion is not definitively proven"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 (>= 0.5) and pool_in_use=4.0 of 5.0 capacity \u2014 utilization is high and trending toward capacity, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 pool usage rose from 0.6 (iter 1) to 0.8, trending toward capacity during the latency window",
+          "[exp-2-pool-timeseries:pool_in_use] 4.0 of 5.0 capacity \u2014 only 1 connection of headroom remains, consistent with charge_payment() holding connections while coordinating idempotency and charge execution"
+        ],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_in_use] 4.0 < pool_capacity 5.0 \u2014 pool not yet fully saturated, so exhaustion is not definitively proven"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.35,
+        "disconfirmed": true,
+        "justification": "exp-3-pool-saturation: pool_in_use=4.0 of pool_capacity=5.0 (<= 4 of 5) and pool_utilization_ratio=0.8 < 0.9, flat across the 30s window (4.0 at both 17:17:40 and 17:17:48, no trend toward 5/5).",
+        "evidence_for": [
+          "[exp-3-pool-saturation:pool_utilization_ratio] 0.8 \u2014 pool pressure remains elevated (4/5), consistent with some connection contention contributing to latency"
+        ],
+        "evidence_against": [
+          "[exp-3-pool-saturation:pool_in_use] 4.0 < pool_capacity 5.0 \u2014 pool never saturated during the latency window",
+          "[exp-3-pool-saturation:pool_utilization_ratio] 0.8 < 0.9 threshold and flat (4.0 -> 4.0) across 30s \u2014 no trend toward saturation, so exhaustion is not the driver",
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 prior 'rising' trend did not continue; utilization plateaued rather than climbing to capacity"
+        ]
+      },
+      {
+        "iteration": 5,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "SM-014 was disconfirmed in iteration 4 on pool gauges; this log experiment does not re-test that condition, but the new log evidence (QueuePool limit of size 5 overflow 0 reached, connection timed out) directly contradicts the earlier 'no saturation' reading and warrants re-opening.",
+        "evidence_for": [
+          "[exp-4-idempotency-logs:lines_count] 100 lines include sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 \u2014 direct evidence the payment pool DID saturate (5/5, overflow 0) during the latency window",
+          "[exp-4-idempotency-logs:service] payment service logs show the TimeoutError raised from pool._checkout/_do_get in the charge DB path \u2014 consistent with charge_payment holding/awaiting connections"
+        ],
+        "evidence_against": [
+          "[exp-3-pool-saturation:pool_in_use] 4.0 of 5.0 sampled at 30s granularity \u2014 instantaneous gauge sampling likely missed the saturation spikes visible in the error logs"
+        ]
+      }
+    ],
+    "SM-016": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.6 (not < 0.5) and pool_in_use=3.0 vs pool_capacity=5.0 (not far from capacity), so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-1-pool-in-use:pool_utilization_ratio] 0.6 \u2014 elevated pool usage consistent with execute_charge() holding connections during slow writes"
+        ],
+        "evidence_against": [
+          "[exp-1-pool-in-use:pool_in_use] 3.0 < pool_capacity 5.0 \u2014 no saturation observed, so pool exhaustion via execute_charge() is not confirmed"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 (>= 0.5) and pool_in_use=4.0 vs capacity 5.0 \u2014 elevated and rising, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 rising pool pressure is consistent with execute_charge() holding connections during slow writes"
+        ],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_in_use] 4.0 < pool_capacity 5.0 \u2014 no full saturation observed, so execute_charge() exhaustion is not confirmed"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 (>= 0.5) and pool_in_use=4.0 vs capacity 5.0 \u2014 elevated and rising, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 rising pool pressure is consistent with execute_charge() holding connections during slow writes"
+        ],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_in_use] 4.0 < pool_capacity 5.0 \u2014 no full saturation observed, so execute_charge() exhaustion is not confirmed"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.3,
+        "disconfirmed": true,
+        "justification": "exp-3-pool-saturation: pool_in_use=4.0 of 5.0 and pool_utilization_ratio=0.8 < 0.9, flat across the 30s window \u2014 the same pool-saturation evidence that disconfirms SM-014 also removes the basis for SM-016's pool-exhaustion mechanism.",
+        "evidence_for": [
+          "[exp-3-pool-saturation:pool_utilization_ratio] 0.8 \u2014 elevated pool usage is at least consistent with execute_charge holding connections"
+        ],
+        "evidence_against": [
+          "[exp-3-pool-saturation:pool_in_use] 4.0 < pool_capacity 5.0 \u2014 no saturation, so execute_charge pool exhaustion is not demonstrated",
+          "[exp-3-pool-saturation:pool_utilization_ratio] 0.8 flat over 30s \u2014 no trend toward capacity"
+        ]
+      },
+      {
+        "iteration": 5,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "SM-016 was disconfirmed in iteration 4 on pool gauges; the new log evidence of QueuePool exhaustion (limit 5, overflow 0, 5s checkout timeout) contradicts that disconfirmation and re-opens the pool-exhaustion mechanism for execute_charge's DB path.",
+        "evidence_for": [
+          "[exp-4-idempotency-logs:lines_count] 100 lines include QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 \u2014 pool fully exhausted with zero overflow, matching execute_charge holding connections during slow writes",
+          "[exp-4-idempotency-logs:service] payment service logs show the checkout timeout originating in the SQLAlchemy pool used by the charge execution path"
+        ],
+        "evidence_against": [
+          "[exp-3-pool-saturation:pool_in_use] 4.0 < 5.0 in 30s gauge samples \u2014 sampling resolution too coarse to capture the saturation that produced the TimeoutError"
+        ]
+      }
+    ],
+    "SM-015": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.6 is not < 0.5, so the disconfirming condition (which would weaken pool hypotheses and favor query hypotheses) is not met; this experiment does not directly test SM-015.",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-1-pool-in-use:pool_utilization_ratio] 0.6 \u2014 pool pressure present, which is not explained by a missing index alone; no direct query-latency evidence collected yet"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not < 0.5, so the condition that would weaken pool hypotheses and favor query hypotheses is not met; this experiment does not directly test SM-015.",
+        "evidence_for": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 rising pool pressure could be a downstream symptom of slow unindexed idempotency-key lookups holding connections longer"
+        ],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 no direct query-latency or scan evidence collected yet for check_idempotency()"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not < 0.5, so the condition that would weaken pool hypotheses and favor query hypotheses is not met; this experiment does not directly test SM-015.",
+        "evidence_for": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 rising pool pressure could be a downstream symptom of slow unindexed idempotency-key lookups holding connections longer"
+        ],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 no direct query-latency or scan evidence collected yet for check_idempotency()"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "The disconfirming condition for SM-014 was met (pool_utilization_ratio=0.8 < 0.9, flat), which per the stated condition favors SM-015; SM-015's own disconfirming condition is not triggered by this experiment.",
+        "evidence_for": [
+          "[exp-3-pool-saturation:pool_utilization_ratio] 0.8 < 0.9 with no saturation \u2014 pool exhaustion ruled out as the cause, redirecting suspicion to query-level cost (unindexed idempotency lookup / N+1) as the latency source",
+          "[exp-3-pool-saturation:pool_in_use] 4.0 steady \u2014 moderate, non-saturating connection usage is consistent with slow individual queries holding connections briefly rather than a pool bottleneck"
+        ],
+        "evidence_against": [
+          "[exp-3-pool-saturation:pool_in_use] no direct query-latency, scan-count, or index-usage metric was collected \u2014 SM-015 remains untested directly"
+        ]
+      },
+      {
+        "iteration": 5,
+        "status": "ruled_out",
+        "confidence": 0.25,
+        "disconfirmed": true,
+        "justification": "exp-4-idempotency-logs: 100 log lines contain no slow-query, seq-scan, rows-examined, or full-table-scan evidence on the idempotency-key lookup; the only error is sqlalchemy.exc.TimeoutError 'QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00' raised from pool._checkout/_do_get \u2014 a pool checkout timeout, not a slow idempotency query.",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-4-idempotency-logs:lines_count] 100 lines captured, truncated=false \u2014 full window inspected and no query-plan/scan evidence surfaced; the observed failure is a connection checkout timeout, not an unindexed idempotency lookup"
+        ]
+      }
+    ],
+    "SM-013": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.45,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.6 is not < 0.5, so the disconfirming condition is not met; this experiment does not directly test SM-013.",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-1-pool-in-use:pool_utilization_ratio] 0.6 \u2014 no evidence of duplicate-key or race behavior in this metric; race hypothesis remains untested"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not < 0.5, so the disconfirming condition is not met; this experiment does not directly test SM-013.",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 no evidence of duplicate-key or race behavior; pool pressure alone does not implicate the idempotency race"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not < 0.5, so the disconfirming condition is not met; this experiment does not directly test SM-013.",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-2-pool-timeseries:pool_utilization_ratio] 0.8 \u2014 no evidence of duplicate-key or race behavior; pool pressure alone does not implicate the idempotency race"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.38,
+        "disconfirmed": false,
+        "justification": "This experiment measures pool utilization only; it neither confirms nor disconfirms the idempotency race condition (SM-013).",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-3-pool-saturation:pool_in_use] 4.0 steady \u2014 no duplicate-key or concurrent-charge signal in pool metrics"
+        ]
+      },
+      {
+        "iteration": 5,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "This experiment targeted SM-015's disconfirming condition; it does not test the idempotency race. No duplicate-key/unique-constraint violation or concurrent-charge signal appears in exp-4-idempotency-logs, but absence of such logs does not meet SM-013's own disconfirming condition.",
+        "evidence_for": [],
+        "evidence_against": [
+          "[exp-4-idempotency-logs:lines_count] 100 lines captured \u2014 only error present is a QueuePool TimeoutError; no duplicate-key, unique-constraint, or concurrent-charge evidence"
+        ]
+      }
+    ]
+  },
+  "ruled_out_details": {
+    "SM-015": {
+      "iteration": 5,
+      "disconfirming_justification": "exp-4-idempotency-logs: 100 log lines contain no slow-query, seq-scan, rows-examined, or full-table-scan evidence on the idempotency-key lookup; the only error is sqlalchemy.exc.TimeoutError 'QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00' raised from pool._checkout/_do_get \u2014 a pool checkout timeout, not a slow idempotency query.",
+      "evidence_against": [
+        "[exp-4-idempotency-logs:lines_count] 100 lines captured, truncated=false \u2014 full window inspected and no query-plan/scan evidence surfaced; the observed failure is a connection checkout timeout, not an unindexed idempotency lookup"
+      ]
+    }
+  }
+}

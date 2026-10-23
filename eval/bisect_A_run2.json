@@ -1,0 +1,72 @@
+{
+  "run_label": "A-run2",
+  "incident_id": "inc-bisect-A-run2-1792775615",
+  "outcome": "root_cause",
+  "root_cause": "connection_pool_exhaustion",
+  "confidence": 0.82,
+  "iterations": 1,
+  "wall_time_s": 23.17,
+  "validation_rejections_count": 0,
+  "validation_rejections": [],
+  "gate_block_reason": null,
+  "per_iteration_tokens": {
+    "1": {
+      "prompt_tokens": 7298,
+      "completion_tokens": 2943,
+      "total_tokens": 10241,
+      "calls": 3
+    }
+  },
+  "total_prompt_tokens": 7298,
+  "total_completion_tokens": 2943,
+  "total_tokens": 10241,
+  "status_history": {
+    "SM-013": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.72,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 (pool_in_use=5.0, pool_capacity=5.0) \u2014 pool is fully saturated, not below 0.5; disconfirming condition NOT met.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run2-1792775615-1:pool_utilization_ratio] 1.0 \u2014 payment pool fully saturated (in_use=5 of capacity=5)",
+          "[req-inc-bisect-A-run2-1792775615-1:pool_in_use] 5.0 equals pool_max_in_use 5.0, indicating all connections held with no headroom for concurrent charges"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run2-1792775615-1:range_s] effective range only 19s (requested 1800s), so saturation is a single instantaneous sample rather than sustained across the alert window"
+        ]
+      }
+    ],
+    "SM-014": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.3,
+        "disconfirmed": false,
+        "justification": "Not applicable to SM-014 directly; pool_utilization_ratio=1.0 shows saturation consistent with slow DB session time, but does not isolate missing-index scans.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run2-1792775615-1:pool_utilization_ratio] 1.0 \u2014 full pool saturation is consistent with slow idempotency queries holding sessions longer"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run2-1792775615-1:pool_in_use] saturation is equally explained by pool exhaustion (SM-013); no query-level evidence of full scans on idempotency keys"
+        ]
+      }
+    ],
+    "SM-012": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.15,
+        "disconfirmed": false,
+        "justification": "Not applicable to SM-012; pool saturation neither confirms nor refutes the idempotency race condition.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run2-1792775615-1:pool_utilization_ratio] 1.0 \u2014 concurrent duplicate charges could contribute to holding pool connections"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run2-1792775615-1:pool_in_use] no evidence of duplicate charge volume or double-charge errors; saturation alone does not indicate a race"
+        ]
+      }
+    ]
+  },
+  "ruled_out_details": {}
+}

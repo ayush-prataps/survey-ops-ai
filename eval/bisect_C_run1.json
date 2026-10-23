@@ -1,0 +1,207 @@
+{
+  "run_label": "C-run1",
+  "incident_id": "inc-bisect-C-run1-1792776248",
+  "outcome": "root_cause",
+  "root_cause": "connection_pool_exhaustion",
+  "confidence": 0.93,
+  "iterations": 3,
+  "wall_time_s": 43.32,
+  "validation_rejections_count": 0,
+  "validation_rejections": [],
+  "gate_block_reason": null,
+  "per_iteration_tokens": {
+    "1": {
+      "prompt_tokens": 6696,
+      "completion_tokens": 3406,
+      "total_tokens": 10102,
+      "calls": 3
+    },
+    "2": {
+      "prompt_tokens": 5550,
+      "completion_tokens": 2174,
+      "total_tokens": 7724,
+      "calls": 2
+    },
+    "3": {
+      "prompt_tokens": 14788,
+      "completion_tokens": 3798,
+      "total_tokens": 18586,
+      "calls": 3
+    }
+  },
+  "total_prompt_tokens": 27034,
+  "total_completion_tokens": 9378,
+  "total_tokens": 36412,
+  "status_history": {
+    "SM-014": [
+      {
+        "iteration": 1,
+        "status": "dominant",
+        "confidence": 0.72,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 (>= 0.6) with pool_in_use=5.0 equal to pool_capacity=5.0 \u2014 pool is fully saturated, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_utilization_ratio] 1.0 \u2014 pool at full saturation",
+          "[req-inc-bisect-C-run1-1792776248-1:pool_max_in_use] 5.0 == pool_capacity 5.0"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-1:request_rate] null \u2014 no request volume data to confirm demand-driven exhaustion"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "dominant",
+        "confidence": 0.75,
+        "disconfirmed": false,
+        "justification": "p99_latency=10.0s (>> 0.5s threshold) with pool_utilization_ratio=1.0 \u2014 latency elevation is present alongside pool saturation, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-2:p99_latency] 10.0s \u2014 severe latency elevation consistent with pool exhaustion",
+          "[req-inc-bisect-C-run1-1792776248-2:pool_utilization_ratio] 1.0 \u2014 pool still saturated (pool_max_in_use 5.0 == pool_capacity 5.0)"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-2:pool_in_use] 4.0 \u2014 instantaneous in-use below capacity, saturation only at max"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "dominant",
+        "confidence": 0.9,
+        "disconfirmed": false,
+        "justification": "Logs contain direct mechanism evidence: 'sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00' at 17:24:36 and a health-check DB error with the same QueuePool message at 17:24:38 \u2014 pool checkout timeouts are present, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-3:lines_count] 100 log lines containing 'QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00' raised in pool._do_get during checkout",
+          "[req-inc-bisect-C-run1-1792776248-2:pool_utilization_ratio] 1.0 with pool_max_in_use 5.0 == pool_capacity 5.0"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-2:pool_in_use] 4.0 \u2014 instantaneous in-use below capacity, saturation intermittent"
+        ]
+      }
+    ],
+    "SM-016": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 (>= 0.6) with pool_in_use=5.0 == pool_capacity=5.0 \u2014 saturation observed, disconfirming condition not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_utilization_ratio] 1.0 \u2014 consistent with pool exhaustion mechanism"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_capacity] 5.0 \u2014 small pool size; cannot distinguish SM-016 variant from SM-014 with this metric alone"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "p99_latency=10.0s (>> 0.5s) with pool_utilization_ratio=1.0 \u2014 saturation and latency elevation co-occur, disconfirming condition not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-2:pool_utilization_ratio] 1.0 \u2014 consistent with pool exhaustion variant",
+          "[req-inc-bisect-C-run1-1792776248-2:p99_latency] 10.0s \u2014 latency elevation consistent with pool contention"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-2:pool_capacity] 5.0 \u2014 small pool; cannot distinguish SM-016 from SM-014"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "active",
+        "confidence": 0.58,
+        "disconfirmed": false,
+        "justification": "QueuePool checkout timeout errors are present in logs (17:24:36, 17:24:38), so the disconfirming condition is not met; however the logs show no distinct mechanism separating SM-016 from SM-014.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-3:lines_count] QueuePool limit reached / connection timed out confirms pool exhaustion class of failure",
+          "[req-inc-bisect-C-run1-1792776248-2:pool_utilization_ratio] 1.0 \u2014 saturation observed"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-3:lines_count] error text names 'QueuePool limit of size 5 overflow 0' \u2014 a single small pool, no evidence of a second/alternate pool configuration distinguishing SM-016"
+        ]
+      }
+    ],
+    "SM-015": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.45,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 indicates saturation, so the condition that would shift weight to SM-015 was not observed; SM-015 remains a secondary candidate.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_utilization_ratio] 1.0 \u2014 slow queries could hold connections and saturate pool"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_in_use] 5.0 \u2014 saturation is directly explained by pool limits, no query-level evidence yet"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.45,
+        "disconfirmed": false,
+        "justification": "p99_latency=10.0s with pool_utilization_ratio=1.0 \u2014 saturation observed, so the condition favoring SM-015 was not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-2:p99_latency] 10.0s \u2014 slow queries could hold connections and inflate latency"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-2:pool_utilization_ratio] 1.0 \u2014 saturation directly explained by pool limits; no index/N+1 evidence"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "active",
+        "confidence": 0.52,
+        "disconfirmed": false,
+        "justification": "Logs show pool checkout timeouts (QueuePool limit reached, timeout 5.00) rather than slow-query evidence; the disconfirming condition for SM-014 is not met, but no slow-query/long-held-connection evidence supports SM-015 either.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-3:lines_count] connections held until 5s checkout timeout \u2014 consistent with long-held connections from slow queries"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-3:lines_count] no slow-query or N+1 log lines; failure is at pool checkout, not query execution"
+        ]
+      }
+    ],
+    "SM-013": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 \u2014 saturation observed, so the condition favoring SM-013 over SM-014 was not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_utilization_ratio] 1.0 \u2014 retries from race conditions could amplify connection demand"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-1:pool_in_use] 5.0 \u2014 no idempotency/duplicate-charge evidence in this observation"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "p99_latency=10.0s with pool_utilization_ratio=1.0 \u2014 saturation observed, so the condition favoring SM-013 over SM-014 was not met.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-2:pool_utilization_ratio] 1.0 \u2014 retries from race conditions could compound pool pressure"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-2:request_rate] 0.67 rps \u2014 low volume, no duplicate-charge/idempotency evidence"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "active",
+        "confidence": 0.35,
+        "disconfirmed": false,
+        "justification": "Pool checkout timeouts are present in logs, so the disconfirming condition is not met; however no idempotency/duplicate-charge evidence appears.",
+        "evidence_for": [
+          "[req-inc-bisect-C-run1-1792776248-3:lines_count] repeated checkout attempts could reflect retries amplifying pool pressure"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-C-run1-1792776248-2:request_rate] 0.67 rps \u2014 low volume, no duplicate-charge or idempotency errors in logs"
+        ]
+      }
+    ]
+  },
+  "ruled_out_details": {}
+}

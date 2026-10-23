@@ -1,0 +1,120 @@
+{
+  "run_label": "A-run3",
+  "incident_id": "inc-bisect-A-run3-1792775721",
+  "outcome": "root_cause",
+  "root_cause": "connection_pool_exhaustion",
+  "confidence": 0.85,
+  "iterations": 2,
+  "wall_time_s": 29.23,
+  "validation_rejections_count": 0,
+  "validation_rejections": [],
+  "gate_block_reason": null,
+  "per_iteration_tokens": {
+    "1": {
+      "prompt_tokens": 7225,
+      "completion_tokens": 3026,
+      "total_tokens": 10251,
+      "calls": 3
+    },
+    "2": {
+      "prompt_tokens": 10002,
+      "completion_tokens": 3215,
+      "total_tokens": 13217,
+      "calls": 3
+    }
+  },
+  "total_prompt_tokens": 17227,
+  "total_completion_tokens": 6241,
+  "total_tokens": 23468,
+  "status_history": {
+    "SM-013": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 (pool_in_use=4.0 of pool_capacity=5.0) is not below 0.5; the disconfirming condition is not met.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run3-1792775721-1:pool_utilization_ratio] 0.8 \u2014 pool is near saturation (4 of 5 connections in use)",
+          "[req-inc-bisect-A-run3-1792775721-1:pool_max_in_use] 4.0 equals current pool_in_use=4.0, indicating sustained high utilization rather than a transient spike"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run3-1792775721-1:pool_capacity] capacity is 5.0 and in_use is 4.0, so one connection remains free \u2014 pool is not fully exhausted",
+          "[req-inc-bisect-A-run3-1792775721-1:range_s] observation window is only 15s, a single instantaneous sample; cannot confirm saturation persisted throughout the 900s alert window"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "dominant",
+        "confidence": 0.85,
+        "disconfirmed": false,
+        "justification": "Logs contain a direct pool exhaustion error: 'sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00' raised from pool._checkout/_do_get during a /payment/charge request stack (lines_count=100, truncated=false).",
+        "evidence_for": [
+          "[req-inc-bisect-A-run3-1792775721-1:lines] sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 \u2014 pool fully saturated (size 5, overflow 0)",
+          "[req-inc-bisect-A-run3-1792775721-1:lines] Traceback path: run_in_threadpool -> self.pool.connect() -> sqlalchemy/pool/base.py _checkout -> impl.py _do_get -> raise exc.TimeoutError, i.e. connection acquisition blocked for the full 5s timeout inside the charge request",
+          "[req-inc-bisect-A-run3-1792775721-1:lines] Error surfaced through starlette exception middleware on the payment service, consistent with charge requests failing/slow at DB connection acquisition"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run3-1792775721-1:lines] Logs show the symptom (pool timeout) but not the root cause of why connections are held long (long processing vs lock waits); no explicit DB lock-wait messages captured in the sampled lines"
+        ]
+      }
+    ],
+    "SM-014": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.3,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not below 0.5, so the pool-exhaustion disconfirming signal does not apply; no idempotency-query latency or index metric was collected (pool_in_use=4.0 only), so SM-014 is neither confirmed nor disconfirmed by this observation.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run3-1792775721-1:pool_utilization_ratio] high pool occupancy (0.8) is consistent with connections being held during slow idempotency-key scans, though this is indirect"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run3-1792775721-1:pool_in_use] no direct query-latency or index-usage data was collected in this experiment; SM-014 remains untested by this observation"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.3,
+        "disconfirmed": false,
+        "justification": "Not applicable to SM-014; the observed pool timeout does not address whether idempotency keys are indexed. No slow-query or full-scan evidence for check_idempotency() appears in the logs.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run3-1792775721-1:lines] Pool exhaustion occurs during DB session acquisition, which is consistent with slow DB work (e.g., unindexed idempotency lookup) holding connections longer, but this is indirect"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run3-1792775721-1:lines] No slow query, seq scan, or index-missing messages in the 100 sampled lines; the only named mechanism is QueuePool exhaustion"
+        ]
+      }
+    ],
+    "SM-012": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.2,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not below 0.5, so the pool-exhaustion disconfirming signal does not apply; no duplicate-charge or idempotency-conflict metric was collected (pool_in_use=4.0 only), so SM-012 is neither confirmed nor disconfirmed by this observation.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run3-1792775721-1:pool_utilization_ratio] elevated concurrent connection usage (0.8) is consistent with concurrent duplicate charges in flight, a precondition for the idempotency race"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run3-1792775721-1:pool_in_use] no duplicate-charge or idempotency-conflict metrics were collected; SM-012 is not directly addressed by this observation"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.2,
+        "disconfirmed": false,
+        "justification": "Not applicable to SM-012; no evidence in logs about duplicate-charge or idempotency race outcomes.",
+        "evidence_for": [
+          "[req-inc-bisect-A-run3-1792775721-1:lines] Concurrent charge pressure implied by pool saturation could amplify a check-then-charge race, but no direct evidence"
+        ],
+        "evidence_against": [
+          "[req-inc-bisect-A-run3-1792775721-1:lines] No duplicate charge, constraint violation, or idempotency conflict errors in the sampled logs"
+        ]
+      }
+    ]
+  },
+  "ruled_out_details": {}
+}

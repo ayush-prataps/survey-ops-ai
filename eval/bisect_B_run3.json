@@ -1,0 +1,284 @@
+{
+  "run_label": "B-run3",
+  "incident_id": "inc-bisect-B-run3-1792776112",
+  "outcome": "budget_exhausted",
+  "root_cause": null,
+  "confidence": null,
+  "iterations": 4,
+  "wall_time_s": 52.31,
+  "validation_rejections_count": 0,
+  "validation_rejections": [],
+  "gate_block_reason": "ExitDecision (iteration 4/6): should_exit=True, outcome=budget_exhausted, reason=Hard token budget exhausted (60425/60000 tokens used).",
+  "per_iteration_tokens": {
+    "1": {
+      "prompt_tokens": 7757,
+      "completion_tokens": 3279,
+      "total_tokens": 11036,
+      "calls": 3
+    },
+    "2": {
+      "prompt_tokens": 12876,
+      "completion_tokens": 3829,
+      "total_tokens": 16705,
+      "calls": 3
+    },
+    "3": {
+      "prompt_tokens": 14231,
+      "completion_tokens": 1343,
+      "total_tokens": 15574,
+      "calls": 2
+    },
+    "4": {
+      "prompt_tokens": 14225,
+      "completion_tokens": 2885,
+      "total_tokens": 17110,
+      "calls": 2
+    }
+  },
+  "total_prompt_tokens": 49089,
+  "total_completion_tokens": 11336,
+  "total_tokens": 60425,
+  "status_history": {
+    "SM-014": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not below 0.80 (pool_in_use=4 of pool_capacity=5), so the disconfirming condition is not met; pool is at the saturation threshold.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] 0.8 >= 0.80 threshold, pool at saturation boundary",
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] 4 of 5 connections in use (pool_max_in_use=4), leaving only 1 free connection"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] 4 < 5 capacity, so pool is not fully exhausted; single instantaneous sample, no time-series trend confirming sustained saturation"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.75,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition targets SM-015 query patterns; the logs instead show a direct pool-exhaustion error (QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00), which does not disconfirm SM-014.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:lines_count] 100 log lines captured; traceback contains sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 \u2014 direct evidence the payment pool is exhausted during charge handling",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] log body shows pool.connect()/_checkout/_do_get path, i.e., charge_payment() blocking on db.connection_pool checkout",
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] 0.8 (4/5) at sampling time, consistent with saturation"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] instantaneous gauge showed 4<5, so exhaustion is intermittent rather than constant"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.75,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition targets SM-015 query patterns; the logs instead show a direct pool-exhaustion error (QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00), which does not disconfirm SM-014.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:lines_count] 100 log lines captured; traceback contains sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 \u2014 direct evidence the payment pool is exhausted during charge handling",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] log body shows pool.connect()/_checkout/_do_get path, i.e., charge_payment() blocking on db.connection_pool checkout",
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] 0.8 (4/5) at sampling time, consistent with saturation"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] instantaneous gauge showed 4<5, so exhaustion is intermittent rather than constant"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.78,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 (pool_in_use=3, pool_max_in_use=4 of capacity 5) is not below 0.60, and pool_max_in_use=4 is at/near capacity, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-3:pool_utilization_ratio] 0.8 >= 0.60 threshold; pool_max_in_use=4 of 5 shows the pool repeatedly reaches near-capacity during the window",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00 \u2014 direct pool exhaustion error",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] second traceback shows db.execute(stmt).scalar_one_or_none() (idempotency-style lookup) failing at pool.connect() checkout"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-3:pool_in_use] instantaneous gauge 3/5 (0.6) is below the 0.8 saturation threshold at sampling time, so saturation is intermittent rather than constant",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] traceback does not attribute the held connection to charge_payment() specifically vs execute_charge()"
+        ]
+      }
+    ],
+    "SM-016": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not below 0.80 (pool_in_use=4 of pool_capacity=5), so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] 0.8 >= 0.80, consistent with execute_charge() holding connections during slow writes",
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] 4/5 connections in use during the latency window"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] pool not fully exhausted (4<5); metric is service-level and cannot attribute usage specifically to execute_charge()"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition targets SM-015 query patterns; the observed QueuePool timeout error does not disconfirm SM-016.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] QueuePool limit of size 5 overflow 0 reached, connection timed out \u2014 consistent with execute_charge() holding connections during slow writes",
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] 0.8 pool utilization during latency window"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] traceback does not identify which function (check_idempotency vs execute_charge) held the connections; no per-function attribution"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition targets SM-015 query patterns; the observed QueuePool timeout error does not disconfirm SM-016.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] QueuePool limit of size 5 overflow 0 reached, connection timed out \u2014 consistent with execute_charge() holding connections during slow writes",
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] 0.8 pool utilization during latency window"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] traceback does not identify which function (check_idempotency vs execute_charge) held the connections; no per-function attribution"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 with pool_max_in_use=4 of capacity 5 is not below 0.60 and pool_max_in_use is not well below capacity, so the disconfirming condition is not met.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-3:pool_utilization_ratio] 0.8 utilization with pool_max_in_use=4/5, consistent with execute_charge() holding connections during slow writes",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] the visible failing frame is db.execute(stmt).scalar_one_or_none() (a read/lookup), not a charge write, so the evidence points more toward the idempotency path than execute_charge()",
+          "[exp-inc-bisect-B-run3-1792776112-3:pool_in_use] instantaneous 3/5 shows saturation is not constant"
+        ]
+      }
+    ],
+    "SM-015": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.45,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition targets SM-014 pool saturation; pool_utilization_ratio=0.8 does not disconfirm SM-015, which remains untested by this metric.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] elevated pool usage is consistent with slow queries holding connections, which could stem from unindexed idempotency-key lookups"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] no query-level latency or index-usage data collected; this experiment does not directly test SM-015"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.25,
+        "disconfirmed": true,
+        "justification": "docker_logs observation (lines_count=100, truncated=false) contains no slow-query, seq-scan, or full-table-scan entries for the idempotency lookup; the only error is a QueuePool checkout timeout, so SM-015's query-level mechanism is not supported.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] latency manifests as pool checkout timeout, which could be downstream of slow queries but no query-level evidence present"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no slow-query, seq-scan, or full-table-scan patterns on the idempotency lookup observed in payment logs"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.25,
+        "disconfirmed": true,
+        "justification": "docker_logs observation (lines_count=100, truncated=false) contains no slow-query, seq-scan, or full-table-scan entries for the idempotency lookup; the only error is a QueuePool checkout timeout, so SM-015's query-level mechanism is not supported.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] latency manifests as pool checkout timeout, which could be downstream of slow queries but no query-level evidence present"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no slow-query, seq-scan, or full-table-scan patterns on the idempotency lookup observed in payment logs"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "ruled_out",
+        "confidence": 0.15,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not below 0.60, so this pool-scoped condition does not apply; SM-015 was already disconfirmed in iteration 2 by absence of slow-query/seq-scan evidence.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] latency manifests as pool checkout timeout rather than slow query execution"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no slow-query, seq-scan, or full-table-scan entries for the idempotency lookup",
+          "[exp-inc-bisect-B-run3-1792776112-3:pool_utilization_ratio] pool saturation, not query cost, is the observed bottleneck"
+        ]
+      }
+    ],
+    "SM-013": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition targets SM-014 pool saturation; pool_utilization_ratio=0.8 does not disconfirm SM-013, which remains untested by this metric.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_utilization_ratio] concurrent duplicate charges passing the idempotency check could add load and hold connections, consistent with elevated pool usage"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-1:pool_in_use] no duplicate-charge or race evidence collected; this experiment does not directly test SM-013"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition is scoped to SM-015 query patterns; absence of duplicate-key/race evidence is noted but the stated condition does not formally disconfirm SM-013.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] pool exhaustion under concurrent charge requests is consistent with non-atomic idempotency check allowing duplicate concurrent charges to hold connections"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no duplicate-key violations or race-specific log entries observed"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "Disconfirming condition is scoped to SM-015 query patterns; absence of duplicate-key/race evidence is noted but the stated condition does not formally disconfirm SM-013.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] pool exhaustion under concurrent charge requests is consistent with non-atomic idempotency check allowing duplicate concurrent charges to hold connections"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no duplicate-key violations or race-specific log entries observed"
+        ]
+      },
+      {
+        "iteration": 4,
+        "status": "active",
+        "confidence": 0.35,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.8 is not below 0.60, so the disconfirming condition (scoped to pool saturation) is not met; SM-013 remains untested by this metric.",
+        "evidence_for": [
+          "[exp-inc-bisect-B-run3-1792776112-3:pool_utilization_ratio] sustained high pool usage under concurrent charge traffic is consistent with duplicate concurrent charges each holding a connection",
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] idempotency lookup (scalar_one_or_none) is on the failing path, consistent with non-atomic check-then-write"
+        ],
+        "evidence_against": [
+          "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no duplicate-key violations, unique-constraint errors, or race-condition evidence in logs"
+        ]
+      }
+    ]
+  },
+  "ruled_out_details": {
+    "SM-015": {
+      "iteration": 4,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 is not below 0.60, so this pool-scoped condition does not apply; SM-015 was already disconfirmed in iteration 2 by absence of slow-query/seq-scan evidence.",
+      "evidence_against": [
+        "[exp-inc-bisect-B-run3-1792776112-2:contains_untrusted_text] no slow-query, seq-scan, or full-table-scan entries for the idempotency lookup",
+        "[exp-inc-bisect-B-run3-1792776112-3:pool_utilization_ratio] pool saturation, not query cost, is the observed bottleneck"
+      ]
+    }
+  }
+}

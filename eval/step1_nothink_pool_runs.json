@@ -1,0 +1,30 @@
+[
+  {
+    "run": 1,
+    "incident_id": "inc-poolfault-nothink-1-1792773320",
+    "outcome": "budget_exhausted",
+    "root_cause": null,
+    "confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 48129,
+    "completion_tokens": 17662,
+    "cached_tokens": 12800,
+    "reasoning_tokens": 0,
+    "total_tokens": 65791,
+    "wall_time_s": 76.55
+  },
+  {
+    "run": 2,
+    "incident_id": "inc-poolfault-nothink-2-1792773436",
+    "outcome": "abstained",
+    "root_cause": null,
+    "confidence": null,
+    "iterations": 6,
+    "prompt_tokens": 42073,
+    "completion_tokens": 15710,
+    "cached_tokens": 7168,
+    "reasoning_tokens": 0,
+    "total_tokens": 57783,
+    "wall_time_s": 69.99
+  }
+]

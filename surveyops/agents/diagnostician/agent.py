@@ -53,7 +53,11 @@ from .callbacks import (
     diagnostician_on_model_error_callback,
     token_tracker,
 )
-from .exit_logic import evaluate_exit_conditions, get_max_loop_iterations
+from .exit_logic import (
+    evaluate_exit_conditions,
+    get_max_loop_iterations,
+    apply_hypothesis_status_transitions,
+)
 from .falsification import validate_experiment_request
 from .prompts import (
     SYSTEM_INSTRUCTIONS,
@@ -248,6 +252,162 @@ def validate_ledger_tool_call(
 
 # ── Step B & C: Deterministic A2A Runner Dispatcher Agent ───────────────────
 
+def resolve_service_from_endpoint(endpoint: str) -> str:
+    """Extracts target microservice name from an endpoint string."""
+    clean = endpoint.split()[1] if " " in endpoint else endpoint
+    if clean.startswith("/orders"):
+        return "orders"
+    elif clean.startswith("/payment"):
+        return "payment"
+    elif clean.startswith("/inventory"):
+        return "inventory"
+    elif clean.startswith("/auth"):
+        return "auth"
+    return "payment"
+
+
+async def execute_runner_a2a_request(
+    runner_url: str,
+    shared_secret: str,
+    req: ExperimentRequest,
+) -> Observation:
+    """Sends ExperimentRequest to the Runner over A2A and returns raw Observation."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": f"rpc-{uuid.uuid4().hex[:8]}",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "message_id": f"msg-{req.request_id}",
+                "role": "user",
+                "parts": [to_a2a_text_part(req).model_dump()],
+            }
+        },
+    }
+    headers = {"X-Shared-Secret": shared_secret}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(runner_url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                return Observation(
+                    request_id=req.request_id,
+                    source="a2a_runner_http_error",
+                    data={"http_status": resp.status_code, "body": resp.text},
+                    collected_at=datetime.now(timezone.utc),
+                )
+            resp_data = resp.json()
+            result = resp_data.get("result", {})
+            status = result.get("status", {})
+            if status.get("state") == "completed":
+                decoded = from_a2a_message(status.get("message"), Observation)
+                if decoded.is_ok and decoded.value is not None:
+                    return decoded.value
+                return Observation(
+                    request_id=req.request_id,
+                    source="a2a_decode_error",
+                    data={"decode_error": decoded.error},
+                    collected_at=datetime.now(timezone.utc),
+                )
+            return Observation(
+                request_id=req.request_id,
+                source="runner_task_failed",
+                data={"task_status": status},
+                collected_at=datetime.now(timezone.utc),
+            )
+    except Exception as net_exc:
+        logger.error(f"Failed to communicate with Runner over A2A: {net_exc}")
+        return Observation(
+            request_id=req.request_id,
+            source="runner_connection_error",
+            data={"exception": str(net_exc)},
+            collected_at=datetime.now(timezone.utc),
+        )
+
+
+def check_system_healthy(
+    metric_obs: Observation | None,
+    log_obs: Observation | None,
+) -> tuple[bool, str]:
+    """
+    Deterministic early-abstain check for healthy systems:
+    Returns (True, reason) only if system has confirmed normal metrics,
+    no saturation, no error logs, normal latency, and substantive telemetry.
+    """
+    if not metric_obs and not log_obs:
+        return False, "Probes failed to execute"
+
+    for obs in (metric_obs, log_obs):
+        if obs and obs.source in ("runner_connection_error", "a2a_runner_http_error", "runner_task_failed"):
+            return False, f"Runner communication error during probe: {obs.source}"
+
+    # 1. Check metric data
+    if not metric_obs or not metric_obs.data:
+        return False, "Insufficient telemetry: metric observation missing"
+
+    m_data = metric_obs.data
+    # 1a. Connection pool saturation
+    pool_ratio = m_data.get("pool_utilization_ratio")
+    if pool_ratio is not None and float(pool_ratio) >= 0.80:
+        return False, f"Pool saturation detected: pool_utilization_ratio={pool_ratio}"
+
+    in_use = m_data.get("pool_max_in_use", m_data.get("pool_in_use"))
+    cap = m_data.get("pool_capacity")
+    if in_use is not None and cap is not None and float(cap) > 0:
+        if float(in_use) >= float(cap):
+            return False, f"Pool saturated: in_use={in_use} >= cap={cap}"
+
+    # 1b. Latency elevation
+    p99_ms = m_data.get("p99_latency_ms")
+    if p99_ms is not None and float(p99_ms) > 500.0:
+        return False, f"High latency detected in metrics: p99={p99_ms}ms"
+
+    # 1c. Prometheus scalar values (>0.5s)
+    if "results" in m_data and isinstance(m_data["results"], list):
+        for r in m_data["results"]:
+            val = r.get("value")
+            if val and len(val) > 1:
+                try:
+                    num_val = float(val[1])
+                    if num_val > 0.5:
+                        return False, f"Elevated Prometheus metric value: {num_val}"
+                except (ValueError, TypeError):
+                    pass
+
+    # 1d. Error rate / error counts
+    error_rate = m_data.get("error_rate")
+    if error_rate is not None and float(error_rate) > 0.0:
+        return False, f"Non-zero error rate detected: {error_rate}"
+
+    error_requests = m_data.get("error_requests")
+    if error_requests is not None and int(error_requests) > 0:
+        return False, f"Error requests detected in telemetry: {error_requests}"
+
+    # 2. Check container logs
+    if not log_obs or not log_obs.data:
+        return False, "Insufficient telemetry: log observation missing"
+
+    l_data = log_obs.data
+    raw_lines = l_data.get("lines", [])
+    if isinstance(raw_lines, str):
+        raw_lines = [raw_lines]
+    elif not raw_lines and "logs" in l_data:
+        raw_lines = str(l_data["logs"]).splitlines()
+
+    if not raw_lines:
+        return False, "Insufficient telemetry: container logs empty"
+
+    error_regex = re.compile(
+        r"QueuePool limit.*reached|TimeoutError|PoolTimeout|500 Internal Server Error|"
+        r"502 Bad Gateway|Connection refused|Exception|Traceback|status_code=5\d\d",
+        re.IGNORECASE,
+    )
+    for line in raw_lines:
+        if error_regex.search(str(line)):
+            return False, f"Fault signature in container logs: {str(line)[:80]}"
+
+    return True, "No saturation, no error logs, normal latency (system healthy)"
+
+
 class A2ARunnerDispatcherAgent(BaseAgent):
     """
     Deterministic Step:
@@ -351,63 +511,9 @@ class A2ARunnerDispatcherAgent(BaseAgent):
             )
         else:
             # 3. Send over A2A to the Runner
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    payload = {
-                        "jsonrpc": "2.0",
-                        "id": f"rpc-{uuid.uuid4().hex[:8]}",
-                        "method": "message/send",
-                        "params": {
-                            "message": {
-                                "message_id": f"msg-{req.request_id}",
-                                "role": "user",
-                                "parts": [to_a2a_text_part(req).model_dump()],
-                            }
-                        },
-                    }
-                    headers = {"X-Shared-Secret": self.shared_secret}
-                    resp = await client.post(self.runner_url, json=payload, headers=headers)
-
-                    if resp.status_code != 200:
-                        observation = Observation(
-                            request_id=req.request_id,
-                            source="a2a_runner_http_error",
-                            data={"http_status": resp.status_code, "body": resp.text},
-                            collected_at=datetime.now(timezone.utc),
-                        )
-                    else:
-                        resp_data = resp.json()
-                        result = resp_data.get("result", {})
-                        status = result.get("status", {})
-                        if status.get("state") == "completed":
-                            decoded = from_a2a_message(status.get("message"), Observation)
-                            if decoded.is_ok and decoded.value is not None:
-                                observation = decoded.value
-                                # Record successful disconfirming test for this hypothesis
-                                if req.hypothesis_id not in disconfirming_tested:
-                                    disconfirming_tested.append(req.hypothesis_id)
-                            else:
-                                observation = Observation(
-                                    request_id=req.request_id,
-                                    source="a2a_decode_error",
-                                    data={"decode_error": decoded.error},
-                                    collected_at=datetime.now(timezone.utc),
-                                )
-                        else:
-                            observation = Observation(
-                                request_id=req.request_id,
-                                source="runner_task_failed",
-                                data={"task_status": status},
-                                collected_at=datetime.now(timezone.utc),
-                            )
-            except Exception as net_exc:
-                logger.error(f"Failed to communicate with Runner over A2A: {net_exc}")
-                observation = Observation(
-                    request_id=req.request_id,
-                    source="runner_connection_error",
-                    data={"exception": str(net_exc)},
-                    collected_at=datetime.now(timezone.utc),
-                )
+            observation = await execute_runner_a2a_request(self.runner_url, self.shared_secret, req)
+            if req.hypothesis_id not in disconfirming_tested and not observation.source.startswith("runner_") and not observation.source.startswith("a2a_"):
+                disconfirming_tested.append(req.hypothesis_id)
 
         print(f"\n[RAW OBSERVATION] Request ID: {observation.request_id} | Source: {observation.source}:")
         print(f"  Collected At: {observation.collected_at}")
@@ -488,16 +594,35 @@ class ExitDecisionAgent(BaseAgent):
             # Append new ledger entries
             for entry in ledger_out.ledger_entries:
                 existing_ledger.append(entry)
-                # Sync confidence & status back to working hypotheses
-                for h in hypotheses:
-                    if h.hypothesis_id == entry.hypothesis_id:
-                        h.confidence = entry.confidence
-                        h.status = entry.status
 
-        # Check hard token budget per incident from env (Requirement 4)
-        max_token_budget = int(os.environ.get("MAX_INCIDENT_TOKEN_BUDGET", "60000"))
+            # Apply deterministic status transitions (window-max or 2 obs for rule-out, reactivation on CheckableSignal, log every change)
+            status_change_log = list(ctx.session.state.get("status_changes", []))
+            last_obs = ctx.session.state.get("last_observation")
+            all_obs = list(ctx.session.state.get("observations", []))
+            props = list(ctx.session.state.get("propositions", []))
+
+            apply_hypothesis_status_transitions(
+                hypotheses=hypotheses,
+                ledger_entries=ledger_out.ledger_entries,
+                ledger=existing_ledger,
+                observations=all_obs,
+                current_observation=last_obs,
+                propositions=props,
+                status_change_log=status_change_log,
+            )
+            ctx.session.state["status_changes"] = status_change_log
+
+        # Check hard token budget per incident from env (Requirement 2 & 4: default 100k)
+        max_token_budget = int(
+            os.environ.get(
+                "MAX_INCIDENT_TOKEN_BUDGET",
+                os.environ.get("SURVEYOPS_MAX_INCIDENT_TOKEN_BUDGET", "100000"),
+            )
+        )
         usage = token_tracker.get_usage(incident_id)
         current_tokens = usage.get("total_tokens", 0)
+
+        leader_margin_history = list(ctx.session.state.get("leader_margin_history", []))
 
         if current_tokens >= max_token_budget:
             logger.warning(
@@ -512,7 +637,7 @@ class ExitDecisionAgent(BaseAgent):
                 reason=f"Hard token budget exhausted ({current_tokens}/{max_token_budget} tokens used).",
             )
         else:
-            # 2. Evaluate exit conditions by code
+            # 2. Evaluate exit conditions by code (including convergence stop)
             exit_decision = evaluate_exit_conditions(
                 hypotheses=hypotheses,
                 tested_disconfirming_hypotheses=disconfirming_tested,
@@ -522,12 +647,21 @@ class ExitDecisionAgent(BaseAgent):
                 ledger=existing_ledger,
                 propositions=ctx.session.state.get("propositions", []),
                 observations=ctx.session.state.get("observations", []),
+                leader_margin_history=leader_margin_history,
             )
 
         logger.info(
             f"ExitDecision (iteration {iteration}/{max_iterations}): should_exit={exit_decision.should_exit}, "
             f"outcome={exit_decision.outcome.value}, reason={exit_decision.reason}"
         )
+
+        # Track leader and margin for convergence checks
+        active_hyps = [h for h in hypotheses if h.status != "ruled_out"]
+        sorted_active = sorted(active_hyps, key=lambda h: h.confidence, reverse=True)
+        if sorted_active:
+            cur_leader = sorted_active[0].hypothesis_id
+            cur_margin = (sorted_active[0].confidence - sorted_active[1].confidence) if len(sorted_active) > 1 else 1.0
+            leader_margin_history.append((cur_leader, cur_margin))
 
         if exit_decision.should_exit:
             top_h = exit_decision.top_hypothesis
@@ -552,6 +686,8 @@ class ExitDecisionAgent(BaseAgent):
                 "hypotheses": hypotheses,
                 "ledger": existing_ledger,
                 "diagnosis": diagnosis,
+                "status_changes": ctx.session.state.get("status_changes", []),
+                "leader_margin_history": leader_margin_history,
             }
             # Terminate LoopAgent cleanly via escalate=True
             yield Event(
@@ -564,6 +700,8 @@ class ExitDecisionAgent(BaseAgent):
                 "hypotheses": hypotheses,
                 "ledger": existing_ledger,
                 "iteration": iteration + 1,
+                "status_changes": ctx.session.state.get("status_changes", []),
+                "leader_margin_history": leader_margin_history,
             }
             yield Event(
                 author=self.name,
@@ -694,6 +832,9 @@ def build_diagnostician_loop_agent(
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=4096,
+            http_options=genai_types.HttpOptions(
+                extra_body={"thinking": {"type": "disabled"}},
+            ),
         ),
         retry_config=retry_cfg,
         before_agent_callback=diagnostician_before_agent_callback,
@@ -728,6 +869,9 @@ def build_diagnostician_loop_agent(
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=4096,
+            http_options=genai_types.HttpOptions(
+                extra_body={"thinking": {"type": "disabled"}},
+            ),
         ),
         retry_config=retry_cfg,
         before_agent_callback=diagnostician_before_agent_callback,
@@ -853,7 +997,99 @@ async def run_diagnostician(
             print(f"    Supporting Proposition ID: {h.supporting_proposition_id}")
     print(f"=======================================================\n")
 
-    # 3. Build LoopAgent and InMemoryRunner
+    # 3. Deterministic iteration-1 CheckableSignal probes (Subtasks 5 & 6)
+    initial_observations: list[Observation] = []
+    enable_pre_probes = os.environ.get("SURVEYOPS_ENABLE_PRE_PROBES", "true").lower() == "true"
+    if enable_pre_probes:
+        resolved_runner_url = runner_url or get_runner_a2a_url()
+        resolved_secret = shared_secret or get_shared_secret()
+        target_service = resolve_service_from_endpoint(incident.endpoint)
+        clean_ep = incident.endpoint.split()[1] if " " in incident.endpoint else incident.endpoint
+
+        ws_val = getattr(incident, "window_start", None)
+        ws_iso = ws_val.isoformat() if hasattr(ws_val, "isoformat") else (str(ws_val) if ws_val else None)
+
+        metric_req = ExperimentRequest(
+            request_id=f"probe-{resolved_incident_id[:8]}-metric",
+            hypothesis_id=propositions[0].proposition_id if propositions else "seed",
+            experiment_type=ExperimentType.query_metrics,
+            params={
+                "template": "pool_in_use",
+                "service": target_service,
+                "endpoint": clean_ep,
+                "range_s": 120,
+                "window_start": ws_iso,
+            },
+            rationale="Deterministic pre-LLM check of connection pool and resource saturation signals",
+            disconfirming_if="pool_utilization_ratio < 0.2",
+        )
+        log_req = ExperimentRequest(
+            request_id=f"probe-{resolved_incident_id[:8]}-logs",
+            hypothesis_id=propositions[0].proposition_id if propositions else "seed",
+            experiment_type=ExperimentType.fetch_logs,
+            params={
+                "service": target_service,
+                "since_s": 120,
+                "limit": 50,
+                "window_start": ws_iso,
+            },
+            rationale="Deterministic pre-LLM check of container error logs and fault signatures",
+            disconfirming_if="no error logs in target service",
+        )
+
+        metric_obs: Observation | None = None
+        log_obs: Observation | None = None
+
+        try:
+            metric_obs = await execute_runner_a2a_request(resolved_runner_url, resolved_secret, metric_req)
+        except Exception as exc:
+            logger.warning(f"Deterministic metric probe failed: {exc}")
+
+        try:
+            log_obs = await execute_runner_a2a_request(resolved_runner_url, resolved_secret, log_req)
+        except Exception as exc:
+            logger.warning(f"Deterministic log probe failed: {exc}")
+
+        # Early-abstain exit for healthy systems (Subtask 6)
+        is_healthy, health_reason = check_system_healthy(metric_obs, log_obs)
+        if is_healthy:
+            logger.info(f"Early-abstain triggered for healthy system [{resolved_incident_id}]: {health_reason}")
+            print(f"\n[EARLY ABSTAIN] Healthy system confirmed: {health_reason}. 0 LLM calls made.")
+            diagnosis = DiagnosisResult(
+                incident_id=resolved_incident_id,
+                outcome=Outcome.abstained,
+                root_cause=None,
+                endpoint=incident.endpoint,
+                supporting_proposition_id=None,
+                graph_edge_ref=None,
+                confidence=0.0,
+                ruled_out=[h.hypothesis_id for h in hypotheses],
+                iterations_used=0,
+            )
+            _incident_ledgers[resolved_incident_id] = []
+            _incident_run_records[resolved_incident_id] = {
+                "incident_id": resolved_incident_id,
+                "endpoint": incident.endpoint,
+                "outcome": diagnosis.outcome.value,
+                "root_cause": None,
+                "confidence": 0.0,
+                "iterations_used": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "served_models": [resolved_model],
+                "primary_served_model": resolved_model,
+            }
+            return diagnosis
+
+        # Only pass pre-probes to LLM state if SURVEYOPS_ENABLE_PRE_PROBES is True
+        if os.environ.get("SURVEYOPS_ENABLE_PRE_PROBES", "false").lower() == "true":
+            if metric_obs:
+                initial_observations.append(metric_obs)
+            if log_obs:
+                initial_observations.append(log_obs)
+
+    # 4. Build LoopAgent and InMemoryRunner
     loop_agent = build_diagnostician_loop_agent(
         model=model,
         runner_url=runner_url,
@@ -873,8 +1109,8 @@ async def run_diagnostician(
         "iteration": 1,
         "max_iterations": max_iterations or get_max_loop_iterations(),
         "pending_request": None,
-        "last_observation": None,
-        "observations": [],
+        "last_observation": initial_observations[-1] if initial_observations else None,
+        "observations": initial_observations,
         "disconfirming_hypotheses_tested": [],
         "diagnosis": None,
     }
@@ -938,6 +1174,7 @@ async def run_diagnostician(
         "total_tokens": usage.get("total_tokens", 0),
         "served_models": served_models or [resolved_model],
         "primary_served_model": primary_model,
+        "status_changes": final_session.state.get("status_changes", []),
     }
     logger.info(f"Incident Run Record [{resolved_incident_id}]: {json.dumps(_incident_run_records[resolved_incident_id])}")
 

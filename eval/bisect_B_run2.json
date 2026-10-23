@@ -1,0 +1,213 @@
+{
+  "run_label": "B-run2",
+  "incident_id": "inc-bisect-B-run2-1792775983",
+  "outcome": "root_cause",
+  "root_cause": "connection_pool_exhaustion",
+  "confidence": 0.88,
+  "iterations": 3,
+  "wall_time_s": 46.27,
+  "validation_rejections_count": 0,
+  "validation_rejections": [],
+  "gate_block_reason": null,
+  "per_iteration_tokens": {
+    "1": {
+      "prompt_tokens": 4338,
+      "completion_tokens": 2199,
+      "total_tokens": 6537,
+      "calls": 2
+    },
+    "2": {
+      "prompt_tokens": 10570,
+      "completion_tokens": 3605,
+      "total_tokens": 14175,
+      "calls": 3
+    },
+    "3": {
+      "prompt_tokens": 20350,
+      "completion_tokens": 5340,
+      "total_tokens": 25690,
+      "calls": 4
+    }
+  },
+  "total_prompt_tokens": 35258,
+  "total_completion_tokens": 11144,
+  "total_tokens": 46402,
+  "status_history": {
+    "SM-014": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.55,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.6, which is not < 0.5; pool_in_use=3.0 vs pool_capacity=5.0 (60% utilization) \u2014 elevated but not clearly disconfirming.",
+        "evidence_for": [
+          "[req-1-pool-in-use:pool_utilization_ratio] 0.6 (3/5 connections in use) \u2014 moderately elevated pool pressure consistent with possible exhaustion under load",
+          "[req-1-pool-in-use:pool_max_in_use] pool_max_in_use=3.0 equals pool_in_use=3.0, indicating sustained (not transient) connection holding"
+        ],
+        "evidence_against": [
+          "[req-1-pool-in-use:pool_in_use] pool_in_use=3.0 is below pool_capacity=5.0, so pool is not fully saturated at this sample",
+          "[req-1-pool-in-use:pool_utilization_ratio] 0.6 < 0.8 threshold, so saturation not demonstrated"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "dominant",
+        "confidence": 0.75,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80 and pool_max_in_use=5.0 equals pool_capacity=5.0, so the disconfirming condition (utilization staying below 0.8) is NOT met.",
+        "evidence_for": [
+          "[req-2-pool-timeseries:pool_utilization_ratio] 1.0 (5/5 connections in use) \u2014 pool fully saturated during latency window",
+          "[req-2-pool-timeseries:pool_max_in_use] pool_max_in_use=5.0 equals pool_capacity=5.0, confirming connections are exhausted",
+          "[req-1-pool-in-use:pool_utilization_ratio] rose from 0.6 to 1.0 across windows, consistent with progressive saturation"
+        ],
+        "evidence_against": [
+          "[req-2-pool-timeseries:pool_in_use] Single instantaneous sample; no sustained time-series points to confirm duration of saturation"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "dominant",
+        "confidence": 0.8,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80 (pool_in_use=5.0 == pool_capacity=5.0) at req-3-pool-timeseries; disconfirming condition not met.",
+        "evidence_for": [
+          "[req-3-pool-timeseries:pool_utilization_ratio] 1.0 (5/5 connections in use) \u2014 pool fully saturated at the latest sample",
+          "[req-3-pool-timeseries:pool_max_in_use] pool_max_in_use=5.0 equals pool_capacity=5.0, confirming full saturation",
+          "[req-2-pool-timeseries:pool_utilization_ratio] 1.0 at prior sample \u2014 saturation sustained across two consecutive samples, not a single transient spike",
+          "[req-1-pool-in-use:pool_utilization_ratio] rose from 0.6 to 1.0 across windows, consistent with progressive pool exhaustion"
+        ],
+        "evidence_against": [
+          "[req-3-pool-timeseries:pool_in_use] Metric is still a single instantaneous gauge value per sample; no histogram/percentile time-series points to confirm duration of saturation",
+          "[req-3-pool-timeseries:pool_in_use] Pool saturation is a symptom; no direct evidence yet that charge_payment() holds connections during idempotency+charge coordination"
+        ]
+      }
+    ],
+    "SM-016": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=0.6, not < 0.5; pool_in_use=3.0 vs capacity=5.0 \u2014 not far below capacity, so disconfirming condition not met.",
+        "evidence_for": [
+          "[req-1-pool-in-use:pool_utilization_ratio] 0.6 utilization indicates meaningful connection holding that could stem from slow charge writes in execute_charge()",
+          "[req-1-pool-in-use:pool_max_in_use] sustained max in-use of 3.0 consistent with connections held during charge processing"
+        ],
+        "evidence_against": [
+          "[req-1-pool-in-use:pool_in_use] 3.0 < capacity 5.0, no full saturation observed"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80 and pool_max_in_use=5.0 equals pool_capacity=5.0, so the disconfirming condition is NOT met.",
+        "evidence_for": [
+          "[req-2-pool-timeseries:pool_utilization_ratio] 1.0 saturation is consistent with execute_charge() holding connections during slow writes",
+          "[req-2-pool-timeseries:pool_max_in_use] 5.0 == capacity 5.0 indicates all connections held"
+        ],
+        "evidence_against": [
+          "[req-2-pool-timeseries:pool_in_use] Pool metric alone cannot attribute saturation specifically to execute_charge() vs charge_payment() idempotency path"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "active",
+        "confidence": 0.6,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80 at req-3-pool-timeseries; disconfirming condition not met.",
+        "evidence_for": [
+          "[req-3-pool-timeseries:pool_utilization_ratio] 1.0 saturation consistent with execute_charge() holding connections during slow writes",
+          "[req-3-pool-timeseries:pool_max_in_use] 5.0 == capacity 5.0 indicates all connections held"
+        ],
+        "evidence_against": [
+          "[req-3-pool-timeseries:pool_in_use] Pool metric alone cannot attribute saturation specifically to execute_charge() vs check_idempotency()"
+        ]
+      }
+    ],
+    "SM-015": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "Pool metric is not the disconfirming signal for this hypothesis; pool_utilization_ratio=0.6 does not rule out index/N+1 overhead in check_idempotency().",
+        "evidence_for": [
+          "[req-1-pool-in-use:pool_utilization_ratio] 0.6 pool pressure could be secondary to slow idempotency-key lookups holding connections"
+        ],
+        "evidence_against": [
+          "[req-1-pool-in-use:pool_in_use] No direct query-latency or index evidence collected yet; pool metric alone cannot confirm or refute index/N+1 cause"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80; pool saturation is present, so the disconfirming condition for this hypothesis is not met.",
+        "evidence_for": [
+          "[req-2-pool-timeseries:pool_utilization_ratio] 1.0 pool pressure could be secondary to slow unindexed idempotency-key lookups holding connections"
+        ],
+        "evidence_against": [
+          "[req-2-pool-timeseries:pool_in_use] No direct query-latency or index evidence; pool saturation may be primary rather than a symptom of N+1"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "active",
+        "confidence": 0.5,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80 at req-3-pool-timeseries; disconfirming condition not met.",
+        "evidence_for": [
+          "[req-3-pool-timeseries:pool_utilization_ratio] 1.0 pool pressure could be secondary to slow unindexed idempotency-key lookups in check_idempotency()"
+        ],
+        "evidence_against": [
+          "[req-3-pool-timeseries:pool_in_use] No direct query-latency or index evidence; pool saturation may be primary rather than a consequence of slow queries"
+        ]
+      }
+    ],
+    "SM-013": [
+      {
+        "iteration": 1,
+        "status": "active",
+        "confidence": 0.45,
+        "disconfirmed": false,
+        "justification": "Pool metric does not address atomicity of idempotency check vs charge write; pool_utilization_ratio=0.6 is neutral for this hypothesis.",
+        "evidence_for": [
+          "[req-1-pool-in-use:pool_utilization_ratio] 0.6 concurrent connection usage is consistent with concurrent identical charge requests in flight"
+        ],
+        "evidence_against": [
+          "[req-1-pool-in-use:pool_in_use] No evidence of duplicate charge attempts or race-specific errors in this observation"
+        ]
+      },
+      {
+        "iteration": 2,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80; saturation present, disconfirming condition not met.",
+        "evidence_for": [
+          "[req-2-pool-timeseries:pool_utilization_ratio] 1.0 full saturation consistent with concurrent duplicate charge attempts holding connections"
+        ],
+        "evidence_against": [
+          "[req-2-pool-timeseries:pool_in_use] No evidence of duplicate charge attempts or race-specific errors; pool metric is neutral for atomicity"
+        ]
+      },
+      {
+        "iteration": 3,
+        "status": "active",
+        "confidence": 0.4,
+        "disconfirmed": false,
+        "justification": "pool_utilization_ratio=1.0 >= 0.80 at req-3-pool-timeseries; disconfirming condition not met.",
+        "evidence_for": [
+          "[req-3-pool-timeseries:pool_utilization_ratio] 1.0 full saturation consistent with concurrent duplicate charge attempts holding connections"
+        ],
+        "evidence_against": [
+          "[req-3-pool-timeseries:pool_in_use] No evidence of duplicate charge attempts or race-specific errors in any sample"
+        ]
+      }
+    ]
+  },
+  "ruled_out_details": {}
+}

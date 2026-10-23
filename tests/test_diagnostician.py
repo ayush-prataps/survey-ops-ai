@@ -772,3 +772,365 @@ class TestPromptBuildersFullLedgerAndObservations:
         assert 'Original disconfirming_if to quote verbatim: "pool_utilization_ratio < 0.2"' in ledger_prompt
 
 
+# ── 12. Token Reduction: Healthy System Early Abstain & Deterministic Probes ──
+
+class TestDeterministicProbesAndEarlyAbstain:
+    def test_check_system_healthy_true_on_low_metrics_and_clean_logs(self):
+        """Confirms that normal metrics and clean logs evaluate as healthy (early abstain)."""
+        from surveyops.agents.diagnostician.agent import check_system_healthy
+
+        metric_obs = Observation(
+            request_id="probe-metric-1",
+            source="prometheus",
+            data={"pool_in_use": 0.0, "pool_capacity": 5.0, "pool_utilization_ratio": 0.0},
+            collected_at=datetime.now(timezone.utc),
+        )
+        log_obs = Observation(
+            request_id="probe-logs-1",
+            source="docker_logs",
+            data={"service": "payment", "lines": ["INFO: Normal operation", "INFO: Health check 200 OK"]},
+            collected_at=datetime.now(timezone.utc),
+        )
+
+        is_healthy, reason = check_system_healthy(metric_obs, log_obs)
+        assert is_healthy is True
+        assert "system healthy" in reason
+
+    def test_check_system_healthy_false_on_saturated_pool(self):
+        """Confirms that pool utilization ratio >= 0.8 triggers unhealthy verdict."""
+        from surveyops.agents.diagnostician.agent import check_system_healthy
+
+        metric_obs = Observation(
+            request_id="probe-metric-2",
+            source="prometheus",
+            data={"pool_in_use": 5.0, "pool_capacity": 5.0, "pool_utilization_ratio": 1.0},
+            collected_at=datetime.now(timezone.utc),
+        )
+        log_obs = Observation(
+            request_id="probe-logs-2",
+            source="docker_logs",
+            data={"service": "payment", "lines": ["INFO: Normal line"]},
+            collected_at=datetime.now(timezone.utc),
+        )
+
+        is_healthy, reason = check_system_healthy(metric_obs, log_obs)
+        assert is_healthy is False
+        assert "saturation" in reason.lower()
+
+    def test_check_system_healthy_false_on_error_logs(self):
+        """Confirms that QueuePool or TimeoutError in container logs triggers unhealthy verdict."""
+        from surveyops.agents.diagnostician.agent import check_system_healthy
+
+        metric_obs = Observation(
+            request_id="probe-metric-3",
+            source="prometheus",
+            data={"pool_in_use": 1.0, "pool_capacity": 5.0, "pool_utilization_ratio": 0.2},
+            collected_at=datetime.now(timezone.utc),
+        )
+        log_obs = Observation(
+            request_id="probe-logs-3",
+            source="docker_logs",
+            data={"service": "payment", "lines": ["TimeoutError: QueuePool limit of size 5 overflow 10 reached"]},
+            collected_at=datetime.now(timezone.utc),
+        )
+
+        is_healthy, reason = check_system_healthy(metric_obs, log_obs)
+        assert is_healthy is False
+        assert "fault signature" in reason.lower()
+
+
+# ── 13. Ruling-Out Fix, Reactivation, and Convergence Stop ───────────────────
+
+class TestRulingOutAndReactivationAndBudget:
+    def test_single_instantaneous_sample_must_not_rule_out(self):
+        """Proves that a single instantaneous metric sample without window-max evidence cannot rule out a hypothesis."""
+        from surveyops.agents.diagnostician.exit_logic import can_rule_out_hypothesis, apply_hypothesis_status_transitions
+
+        obs = Observation(
+            request_id="req-inst-1",
+            source="prometheus",
+            data={"pool_in_use": 2.0, "pool_capacity": 5.0, "pool_utilization_ratio": 0.40},  # No pool_max_in_use
+            collected_at=datetime.now(timezone.utc),
+        )
+        ledger_entry = LedgerEntry(
+            iteration=1,
+            hypothesis_id="SM-013",
+            evidence_for=[],
+            evidence_against=["[req-inst-1:pool_utilization_ratio] 0.40 < 0.60"],
+            confidence=0.15,
+            status="ruled_out",  # Proposed ruled_out by LLM
+            disconfirming_condition_met=True,
+            quoted_disconfirming_if="pool_utilization_ratio < 0.60",
+            disconfirming_justification="pool ratio is 0.40",
+        )
+
+        can_rule_out, reason, trigger_id = can_rule_out_hypothesis(
+            "SM-013",
+            [ledger_entry],
+            [obs],
+        )
+        assert can_rule_out is False
+        assert "single instantaneous observation" in reason.lower()
+
+        # Verify apply_hypothesis_status_transitions overrides the LLM's proposed ruled_out to active
+        h = HypothesisItem(
+            hypothesis_id="SM-013",
+            failure_mode=FailureMode.connection_pool_exhaustion,
+            description="Pool exhaustion",
+            confidence=0.50,
+            status="active",
+        )
+        status_changes = []
+        apply_hypothesis_status_transitions(
+            hypotheses=[h],
+            ledger_entries=[ledger_entry],
+            ledger=[ledger_entry],
+            observations=[obs],
+            current_observation=obs,
+            propositions=[],
+            status_change_log=status_changes,
+        )
+        assert h.status == "active"
+
+    def test_ruling_out_on_window_max_works(self):
+        """Proves that verified window-max evidence (e.g. pool_max_in_use < cap over window) successfully rules out."""
+        from surveyops.agents.diagnostician.exit_logic import can_rule_out_hypothesis, apply_hypothesis_status_transitions
+
+        obs = Observation(
+            request_id="req-win-1",
+            source="prometheus",
+            data={
+                "pool_in_use": 1.0,
+                "pool_max_in_use": 1.0,  # Peak was 1.0 of 5.0 over 120s
+                "pool_capacity": 5.0,
+                "pool_utilization_ratio": 0.20,
+                "range_s": 120,
+            },
+            collected_at=datetime.now(timezone.utc),
+        )
+        ledger_entry = LedgerEntry(
+            iteration=1,
+            hypothesis_id="SM-013",
+            evidence_for=[],
+            evidence_against=["[req-win-1:pool_max_in_use] 1.0 / 5.0 over 120s"],
+            confidence=0.10,
+            status="ruled_out",
+            disconfirming_condition_met=True,
+            quoted_disconfirming_if="pool_utilization_ratio < 0.60",
+            disconfirming_justification="window-max is 0.20",
+        )
+
+        can_rule_out, reason, trigger_id = can_rule_out_hypothesis(
+            "SM-013",
+            [ledger_entry],
+            [obs],
+        )
+        assert can_rule_out is True
+        assert "window-max" in reason.lower()
+        assert trigger_id == "req-win-1"
+
+        h = HypothesisItem(
+            hypothesis_id="SM-013",
+            failure_mode=FailureMode.connection_pool_exhaustion,
+            description="Pool exhaustion",
+            confidence=0.50,
+            status="active",
+        )
+        status_changes = []
+        apply_hypothesis_status_transitions(
+            hypotheses=[h],
+            ledger_entries=[ledger_entry],
+            ledger=[ledger_entry],
+            observations=[obs],
+            current_observation=obs,
+            propositions=[],
+            status_change_log=status_changes,
+        )
+        assert h.status == "ruled_out"
+        assert len(status_changes) == 1
+        assert status_changes[0]["from"] == "active"
+        assert status_changes[0]["to"] == "ruled_out"
+        assert status_changes[0]["observation_id"] == "req-win-1"
+
+    def test_ruling_out_on_two_independent_observations_works(self):
+        """Proves that 2 independent disconfirming observations without window-max successfully rules out."""
+        from surveyops.agents.diagnostician.exit_logic import can_rule_out_hypothesis
+
+        obs1 = Observation(request_id="req-log-1", source="docker_logs", data={"lines": []}, collected_at=datetime.now(timezone.utc))
+        obs2 = Observation(request_id="req-log-2", source="docker_logs", data={"lines": []}, collected_at=datetime.now(timezone.utc))
+        entry1 = LedgerEntry(
+            iteration=1,
+            hypothesis_id="SM-015",
+            evidence_for=[],
+            evidence_against=["[req-log-1:lines] no slow queries"],
+            confidence=0.40,
+            status="active",
+            disconfirming_condition_met=True,
+            quoted_disconfirming_if="no slow queries",
+            disconfirming_justification="clean logs",
+        )
+        entry2 = LedgerEntry(
+            iteration=2,
+            hypothesis_id="SM-015",
+            evidence_for=[],
+            evidence_against=["[req-log-2:lines] no seq scans"],
+            confidence=0.15,
+            status="ruled_out",
+            disconfirming_condition_met=True,
+            quoted_disconfirming_if="no slow queries",
+            disconfirming_justification="clean logs",
+        )
+
+        can_rule_out, reason, trigger_id = can_rule_out_hypothesis(
+            "SM-015",
+            [entry1, entry2],
+            [obs1, obs2],
+        )
+        assert can_rule_out is True
+        assert "2 independent disconfirming observations" in reason.lower()
+        assert trigger_id == "req-log-2"
+
+    def test_reactivation_works_on_checkable_signal(self):
+        """Proves that when a later observation satisfies CheckableSignal, a ruled_out hypothesis is reactivated."""
+        from surveyops.agents.diagnostician.exit_logic import apply_hypothesis_status_transitions
+
+        prop = Proposition(
+            proposition_id="SM-013",
+            endpoint="POST /payment/charge",
+            failure_mode=FailureMode.connection_pool_exhaustion,
+            justification="Connection pool exhaustion",
+            predicted_signal="pool_utilization_ratio >= 0.8",
+            graph_edge_ref="payment -> db",
+            checkable_signal=CheckableSignal(
+                type="metric",
+                metric_name="pool_utilization_ratio",
+                comparator=">=",
+                threshold=0.80,
+                log_pattern=r"QueuePool limit of size .* reached",
+            ),
+        )
+        h = HypothesisItem(
+            hypothesis_id="SM-013",
+            failure_mode=FailureMode.connection_pool_exhaustion,
+            description="Pool exhaustion",
+            confidence=0.15,
+            status="ruled_out",  # Currently ruled out
+            supporting_proposition_id="SM-013",
+        )
+
+        # New observation arrives with QueuePool error in container logs
+        obs = Observation(
+            request_id="req-reactivate-1",
+            source="docker_logs",
+            data={"lines": ["sqlalchemy.exc.TimeoutError: QueuePool limit of size 5 overflow 0 reached, connection timed out, timeout 5.00"]},
+            collected_at=datetime.now(timezone.utc),
+        )
+        entry = LedgerEntry(
+            iteration=2,
+            hypothesis_id="SM-013",
+            evidence_for=["[req-reactivate-1:lines] QueuePool limit reached"],
+            evidence_against=[],
+            confidence=0.85,
+            status="dominant",
+            disconfirming_condition_met=False,
+            quoted_disconfirming_if="pool_utilization_ratio < 0.60",
+            disconfirming_justification="pool is exhausted",
+        )
+
+        status_changes = []
+        apply_hypothesis_status_transitions(
+            hypotheses=[h],
+            ledger_entries=[entry],
+            ledger=[entry],
+            observations=[obs],
+            current_observation=obs,
+            propositions=[prop],
+            status_change_log=status_changes,
+        )
+        assert h.status == "active"
+        assert h.confidence >= 0.70
+        assert len(status_changes) == 1
+        assert status_changes[0]["from"] == "ruled_out"
+        assert status_changes[0]["to"] == "active"
+        assert status_changes[0]["observation_id"] == "req-reactivate-1"
+        assert "reactivated by checkablesignal" in status_changes[0]["reason"].lower()
+
+    def test_convergence_stop_and_budget_behavior(self, monkeypatch):
+        """Proves convergence stop triggers when leader and margin are stable for 2 iterations."""
+        from surveyops.agents.diagnostician.exit_logic import evaluate_exit_conditions
+
+        prop = Proposition(
+            proposition_id="SM-013",
+            endpoint="POST /payment/charge",
+            failure_mode=FailureMode.connection_pool_exhaustion,
+            justification="Pool exhaustion",
+            predicted_signal="pool ratio >= 0.8",
+            graph_edge_ref="payment -> db",
+            checkable_signal=CheckableSignal(
+                type="metric",
+                metric_name="pool_utilization_ratio",
+                comparator=">=",
+                threshold=0.80,
+            ),
+        )
+        hyps = [
+            HypothesisItem(
+                hypothesis_id="SM-013",
+                failure_mode=FailureMode.connection_pool_exhaustion,
+                description="Pool exhaustion",
+                confidence=0.88,
+                status="dominant",
+                supporting_proposition_id="SM-013",
+            ),
+            HypothesisItem(
+                hypothesis_id="SM-016",
+                failure_mode=FailureMode.connection_pool_exhaustion,
+                description="Pool rival",
+                confidence=0.74,
+                status="active",
+            ),
+        ]
+        obs = Observation(
+            request_id="req-conv-1",
+            source="prometheus",
+            data={"pool_in_use": 5.0, "pool_capacity": 5.0, "pool_utilization_ratio": 1.0},
+            collected_at=datetime.now(timezone.utc),
+        )
+        ledger = [
+            LedgerEntry(
+                iteration=2,
+                hypothesis_id="SM-013",
+                evidence_for=["[req-conv-1:pool_utilization_ratio] 1.0 >= 0.8"],
+                evidence_against=[],
+                confidence=0.88,
+                status="dominant",
+                disconfirming_condition_met=False,
+                quoted_disconfirming_if="pool_utilization_ratio < 0.6",
+                disconfirming_justification="saturated",
+            )
+        ]
+
+        # Margin is 0.88 - 0.74 = 0.14 (< 0.20 standard margin threshold)
+        # Previous iteration had SM-013 as leader with margin 0.12
+        # Diff = |0.14 - 0.12| = 0.02 <= 0.05
+        leader_history = [("SM-013", 0.12)]
+
+        decision = evaluate_exit_conditions(
+            hypotheses=hyps,
+            tested_disconfirming_hypotheses={"SM-013"},
+            iteration=2,
+            max_iterations=5,
+            confidence_threshold=0.80,
+            confidence_margin=0.20,
+            ledger=ledger,
+            propositions=[prop],
+            observations=[obs],
+            leader_margin_history=leader_history,
+        )
+        assert decision.should_exit is True
+        assert decision.outcome == Outcome.root_cause
+        assert "convergence stop" in decision.reason.lower()
+
+
+
+
