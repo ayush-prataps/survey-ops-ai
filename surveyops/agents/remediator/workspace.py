@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -15,6 +16,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger("surveyops.remediator.workspace")
+
+TOKEN_PATTERN = re.compile(r"(?:github_pat_|ghp_|gho_)[A-Za-z0-9_]+")
+
+
+def redact_tokens(text: str) -> str:
+    """Redacts GitHub personal access tokens matching github_pat_, ghp_, or gho_."""
+    if not text:
+        return text
+    return TOKEN_PATTERN.sub("[REDACTED_TOKEN]", text)
 
 
 def get_authenticated_repo_url(repo_url: Optional[str] = None, token: Optional[str] = None) -> str:
@@ -60,8 +70,9 @@ def resolve_target_repo_dir(workspace_root: Optional[Path] = None) -> Path:
             check=False,
         )
         if res.returncode != 0:
-            logger.error(f"Failed to clone target repository: {res.stderr}")
-            raise RuntimeError(f"Failed to clone target repository: {res.stderr}")
+            clean_err = redact_tokens(res.stderr)
+            logger.error(f"Failed to clone target repository: {clean_err}")
+            raise RuntimeError(f"Failed to clone target repository: {clean_err}")
 
     return target_dir
 
@@ -141,7 +152,8 @@ def commit_and_push_changes(repo_dir: Path, branch_name: str, commit_message: st
         check=False,
     )
     if push_res.returncode != 0:
-        raise RuntimeError(f"Git push failed for {branch_name}: {push_res.stderr}")
+        clean_push_err = redact_tokens(push_res.stderr)
+        raise RuntimeError(f"Git push failed for {branch_name}: {clean_push_err}")
     logger.info(f"Pushed branch {branch_name} to origin.")
 
 

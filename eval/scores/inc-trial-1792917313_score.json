@@ -1,0 +1,15 @@
+{
+  "incident_id": "inc-trial-1792917313",
+  "fault_id": "fault-bc67ad1a",
+  "timestamp": "2026-10-25T08:37:22.765348+00:00",
+  "ground_truth_failure_mode": "connection_pool_exhaustion",
+  "predicted_root_cause": "connection_pool_exhaustion",
+  "outcome": "root_cause",
+  "is_correct": true,
+  "confidence": 0.86,
+  "iterations_used": 3,
+  "remediation_pr_opened": false,
+  "pr_url": null,
+  "total_tokens": 29371,
+  "total_duration_seconds": 159.47483491897583
+}

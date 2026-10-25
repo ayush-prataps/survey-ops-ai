@@ -158,6 +158,16 @@ Last updated: 2026-10-19
   - Unit tests (`tests/test_remediator.py`): 15/15 tests covering allowlist, forbidden files, path traversal, injection in comments, AST rollback, Rule 5, malformed payloads. All 147 test suite tests pass.
   - Live E2E verification: pool fault injected -> Diagnostician converged on `connection_pool_exhaustion` (heuristic=0.88) -> A2A handoff to Remediator -> localized `payment/main.py` -> fail-before confirmed (`AssertionError`) -> patch applied -> pass-after confirmed -> PR opened on target repo -> branch and PR cleanly cleaned up.
 
+- Step 7b completed (Behavioral Testing, Token Redaction, Container Isolation, Reporting & Scorer):
+  - Invariants: Added mandatory token redaction rule to `AGENTS.md` for `github_pat_`, `ghp_`, and `gho_` tokens across logs, reports, and traces. Added unit test `test_token_redaction_in_logged_output_and_reports`.
+  - Behavioral regression testing: Replaced constant checks with functional behavioral concurrency tests (QueuePool checkout capacity under concurrent burst) with clean cleanup in `finally` blocks.
+  - Container isolation: Created `surveyops/agents/remediator/Dockerfile`, configured `remediator` service in `infra/docker-compose.yml` with isolated `remediator_workspace` volume and no host file mounts.
+  - Deterministic report step: Implemented `surveyops/report/` producing validated `IncidentReport` (JSON + Markdown) without LLM, saving to `surveyops_postgres` and `eval/reports/`.
+  - Evaluation scorer: Implemented `eval/scorer/` comparing reports against blind ground truth in `eval/ground_truth/`. Added unit tests in `tests/test_scorer.py`.
+  - Single-command trial runner: Implemented `scripts/run_trial.sh` and `scripts/run_trial_orchestrator.py` automating reset, fault injection, traffic generation, diagnosis, remediation, reporting, scoring, CI check verification, and branch/PR cleanup.
+  - Live E2E trial run: Diagnostician converged on `connection_pool_exhaustion` in 2 iterations (heuristic=0.80, 12,103 tokens); Remediator opened PR #2 on target repo; GitHub Actions CI check completed green (`success`); evaluation scorer verified correct (1.0); PR closed and branch deleted cleanly.
+  - Test suite expanded to 151 tests (`pytest tests/` all passing).
+
 ## In progress
 - None
 
@@ -166,8 +176,8 @@ Last updated: 2026-10-19
 
 ## Next 3
 1. End-to-end evaluation benchmark across full fault catalog (5 faults).
-2. Incident report deterministic template fill from evidence ledger.
-3. Viva preparation and final cloud deployment.
+2. Incident report deterministic template fill refinement for silent/ambiguous faults.
+3. Final cloud deployment and Viva preparation.
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

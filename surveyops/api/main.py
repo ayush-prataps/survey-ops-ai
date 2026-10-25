@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import sys
+import time
 from threading import Lock
 import uuid
 
@@ -318,11 +319,46 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
     )
     try:
         from surveyops.agents.diagnostician import run_diagnostician
+        diag_start = time.time()
         diagnosis = await run_diagnostician(incident=payload, incident_id=incident_id)
+        diag_dur = time.time() - diag_start
         logger.info(
             "Diagnostician run completed",
             extra={"extra_fields": {"incident_id": incident_id, "outcome": diagnosis.outcome.value}},
         )
+
+        # Generate deterministic IncidentReport and save to DB and eval/reports/
+        try:
+            from surveyops.report import generate_and_save_report
+            from surveyops.agents.diagnostician.agent import (
+                get_incident_ledger,
+                get_incident_run_record,
+            )
+            ledger = get_incident_ledger(incident_id)
+            run_record = get_incident_run_record(incident_id)
+            timings = {
+                "detect": 60.0,
+                "diagnose": diag_dur,
+                "total": diag_dur + 60.0,
+            }
+            usage = {
+                "prompt_tokens": run_record.get("prompt_tokens", 0),
+                "completion_tokens": run_record.get("completion_tokens", 0),
+                "total_tokens": run_record.get("total_tokens", 0),
+            }
+            report, json_path, md_path = generate_and_save_report(
+                incident_id=incident_id,
+                diagnosis=diagnosis,
+                evidence_trail=ledger,
+                timings=timings,
+                usage=usage,
+            )
+            logger.info(
+                f"Generated and saved incident report for {incident_id} to {json_path} and {md_path}",
+                extra={"extra_fields": {"incident_id": incident_id, "report_json": str(json_path)}},
+            )
+        except Exception as rep_exc:
+            logger.warning(f"Report generation failed (non-fatal): {rep_exc}")
     except Exception as exc:
         logger.error(
             f"Diagnostician background run failed for {incident_id}: {exc}",

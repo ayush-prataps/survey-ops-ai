@@ -117,11 +117,14 @@ REQUIREMENTS:
 1. Target file must be: "{localization.file_path}".
 2. Propose a MINIMAL, ATOMIC replacement for a specific code block in the target file.
    - "original_snippet" MUST be an exact verbatim substring from the file above.
-   - "replacement_snippet" MUST fix the problem (e.g. increase connection pool size POOL_SIZE to >= 15 and MAX_OVERFLOW to >= 10).
+   - "replacement_snippet" MUST resolve the root cause cleanly with minimal code changes.
 3. Author a DETERMINISTIC pytest regression test in a file under "tests/" (e.g. "tests/test_{diagnosis.root_cause.value if diagnosis.root_cause else 'incident'}_regression.py").
+   - The regression test MUST test functional or runtime behavior rather than asserting static constants.
+   - For resource limits, connection pools, or concurrency: build the component or pool using the service module's configured settings/parameters (using mocks for external drivers where appropriate), hold N concurrent operations or checkouts simultaneously (where N is above the unpatched capacity but within the upgraded capacity) with a short timeout, and assert none time out. Always clean up or close acquired resources in a finally block.
+   - In regression tests, import the service module directly using standard import (e.g. `import payment.main as payment_module`). Do NOT use `importlib` or dynamic module reloading (services define Prometheus metrics on import, so reloading them in the same process causes duplicate timeseries registration errors).
    - The test MUST FAIL when executed against the unpatched code.
    - The test MUST PASS when executed against the patched code.
-   - Do NOT use time.sleep or timing thresholds that can flake in CI. Assert directly on the module parameters or behavior (e.g. import the target module and assert POOL_SIZE >= 15 and MAX_OVERFLOW >= 10).
+   - Do NOT use long time.sleep or wall-clock timing thresholds that can flake in CI. Keep timeouts short and deterministic.
 4. Output format:
    You MUST return ONLY a valid JSON object matching the PatchProposal schema:
    {{

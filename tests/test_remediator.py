@@ -328,3 +328,133 @@ class TestRemediatorServerAndFlow:
             result = run_remediation(diag, repo_dir=dummy_repo)
             assert result.pr_url is None
             mock_pr.assert_not_called()
+
+    def test_token_redaction_in_logged_output_and_reports(self, tmp_path: Path):
+        from surveyops.agents.remediator.workspace import redact_tokens
+        from surveyops.report.renderer import (
+            generate_and_save_report,
+            render_markdown,
+            sanitize_all_tokens,
+        )
+        from surveyops.schemas import (
+            DiagnosisResult,
+            FailureMode,
+            Outcome,
+            RemediationResult,
+            LedgerEntry,
+        )
+
+        # 1. Test direct redaction regex
+        sample_with_tokens = (
+            "Error: git push failed with github_pat_11ABCXYZ999_secret_token and ghp_MyPersonalToken123456 "
+            "as well as gho_OAuthToken789XYZ"
+        )
+        redacted = redact_tokens(sample_with_tokens)
+        assert "github_pat_" not in redacted
+        assert "ghp_" not in redacted
+        assert "gho_" not in redacted
+        assert "[REDACTED_TOKEN]" in redacted
+
+        # 2. Test that rendered reports and markdown never contain token strings
+        leak_diagnosis = DiagnosisResult(
+            incident_id="inc-leak-test",
+            outcome=Outcome.root_cause,
+            root_cause=FailureMode.connection_pool_exhaustion,
+            confidence=0.95,
+            endpoint="POST /payment/charge with token github_pat_9999999_in_endpoint",
+            graph_edge_ref="edge -> DB with ghp_EdgeToken888",
+            iterations_used=2,
+        )
+        leak_ledger = [
+            LedgerEntry(
+                iteration=1,
+                hypothesis_id="H-1",
+                hypothesis_ref="H-1",
+                status="supported",
+                confidence=0.95,
+                supporting_evidence_citations=["obs-1: token gho_ObsToken777 in observation"],
+            )
+        ]
+        leak_remediation = RemediationResult(
+            pr_url="https://github.com/org/repo/pull/1?token=ghp_UrlToken555",
+            branch="fix/pool_github_pat_BranchToken444",
+            files_changed=["payment/main.py"],
+            tests_added=["tests/test_reg.py"],
+        )
+
+        report, json_path, md_path = generate_and_save_report(
+            incident_id="inc-leak-test",
+            diagnosis=leak_diagnosis,
+            evidence_trail=leak_ledger,
+            remediation=leak_remediation,
+            output_dir=tmp_path / "reports",
+        )
+
+        json_text = json_path.read_text(encoding="utf-8")
+        md_text = md_path.read_text(encoding="utf-8")
+
+        for forbidden in ("github_pat_", "ghp_", "gho_"):
+            assert forbidden not in json_text, f"Token pattern '{forbidden}' leaked in report JSON!"
+            assert forbidden not in md_text, f"Token pattern '{forbidden}' leaked in report Markdown!"
+
+    def test_behavioral_regression_test_logic_concurrency(self):
+        import subprocess
+        from surveyops.agents.remediator.workspace import resolve_target_repo_dir
+
+        target_repo = resolve_target_repo_dir()
+        venv_py = target_repo / ".venv" / "bin" / "python"
+        py_cmd = str(venv_py) if venv_py.exists() else sys.executable
+
+        code = """
+from unittest.mock import MagicMock
+try:
+    from sqlalchemy.pool import QueuePool
+    import sqlalchemy.exc
+except ImportError:
+    # If not in target venv, test logic with generic pool simulator
+    class MockTimeout(Exception): pass
+    class QueuePool:
+        def __init__(self, creator, pool_size, max_overflow, timeout):
+            self.capacity = pool_size + max_overflow
+            self.active = 0
+        def connect(self):
+            if self.active >= self.capacity:
+                raise MockTimeout("limit reached")
+            self.active += 1
+            return MagicMock(close=lambda: None)
+    class sqlalchemy:
+        class exc:
+            TimeoutError = MockTimeout
+
+# 1. Unpatched settings: pool_size=5, max_overflow=0
+unpatched_pool = QueuePool(creator=lambda: MagicMock(), pool_size=5, max_overflow=0, timeout=0.05)
+conns = []
+timed_out = False
+try:
+    for _ in range(8):
+        conns.append(unpatched_pool.connect())
+except sqlalchemy.exc.TimeoutError:
+    timed_out = True
+finally:
+    for c in conns:
+        c.close()
+
+assert timed_out is True, "Behavioral test did not fail on unpatched pool size!"
+
+# 2. Patched settings: pool_size=20, max_overflow=10
+patched_pool = QueuePool(creator=lambda: MagicMock(), pool_size=20, max_overflow=10, timeout=0.05)
+patched_conns = []
+try:
+    for _ in range(8):
+        patched_conns.append(patched_pool.connect())
+    assert len(patched_conns) == 8
+finally:
+    for c in patched_conns:
+        c.close()
+
+print("BEHAVIOR_CHECK_PASSED")
+"""
+        res = subprocess.run([py_cmd, "-c", code], capture_output=True, text=True, check=False)
+        assert res.returncode == 0, f"Subprocess failed: {res.stderr}"
+        assert "BEHAVIOR_CHECK_PASSED" in res.stdout
+

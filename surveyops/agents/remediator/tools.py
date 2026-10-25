@@ -27,6 +27,7 @@ from surveyops.agents.remediator.schemas import (
 from surveyops.agents.remediator.workspace import (
     commit_and_push_changes,
     find_test_runner,
+    redact_tokens,
 )
 
 load_dotenv()
@@ -325,13 +326,15 @@ def github_open_pr(
                 branch=branch_name,
             )
     except urllib.error.HTTPError as err:
-        err_body = err.read().decode("utf-8")
-        logger.error(f"GitHub API error ({err.code}): {err_body}")
+        err_body = redact_tokens(err.read().decode("utf-8"))
+        err_msg = f"GitHub API error {err.code} at {api_url}: {err_body}"
+        logger.error(err_msg)
         return PRResult(
             success=False,
             branch=branch_name,
-            error=f"GitHub API error {err.code}: {err_body}",
+            error=err_msg,
         )
     except Exception as exc:
-        logger.error(f"Failed to open GitHub PR: {exc}")
-        return PRResult(success=False, branch=branch_name, error=str(exc))
+        clean_err = redact_tokens(str(exc))
+        logger.error(f"Failed to open GitHub PR: {clean_err}")
+        return PRResult(success=False, branch=branch_name, error=clean_err)

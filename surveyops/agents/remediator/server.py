@@ -165,10 +165,22 @@ def create_remediator_app(
     fastapi_app = a2a_app.build()
     fastapi_app.state.executor = exec_instance
 
+    @fastapi_app.get("/health")
+    def health_check() -> dict:
+        return {"status": "ok", "service": "surveyops-remediator"}
+
+    @fastapi_app.get("/remediation/latest")
+    def get_latest_remediation() -> dict:
+        rem = exec_instance.last_remediation
+        if not rem:
+            return {"status": "none", "remediation": None}
+        return {"status": "ok", "remediation": rem.model_dump(mode="json")}
+
     @fastapi_app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         if request.method == "GET" and (
-            request.url.path.startswith("/.well-known/") or request.url.path in ("/docs", "/openapi.json")
+            request.url.path.startswith("/.well-known/")
+            or request.url.path in ("/health", "/remediation/latest", "/docs", "/openapi.json")
         ):
             return await call_next(request)
         auth_header = request.headers.get("Authorization")
