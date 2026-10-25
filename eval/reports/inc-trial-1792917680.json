@@ -1,0 +1,162 @@
+{
+  "incident_id": "inc-trial-1792917680",
+  "diagnosis": {
+    "incident_id": "inc-trial-1792917680",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "endpoint": "/payment/charge",
+    "supporting_proposition_id": "SM-014",
+    "graph_edge_ref": "payment.charge_payment() -> db.connection_pool",
+    "confidence": 0.8,
+    "self_reported_confidence": 0.7,
+    "ruled_out": [],
+    "iterations_used": 2
+  },
+  "evidence_trail": [
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-014",
+      "evidence_for": [
+        "[req-1792917680-1:pool_utilization_ratio] 0.8 — pool near saturation",
+        "[req-1792917680-1:pool_max_in_use] 4.0 equals pool_in_use=4.0, indicating sustained high usage"
+      ],
+      "evidence_against": [
+        "[req-1792917680-1:pool_capacity] 5.0 with pool_in_use=4.0 leaves one free connection, so not fully exhausted"
+      ],
+      "confidence": 0.65,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio remains low (well below saturation, e.g. < 0.7) with pool_in_use far below pool_capacity during the incident window, which would rule out connection pool exhaustion and shift focus to SM-013/SM-015.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 (>= 0.7) and pool_in_use=4.0 vs pool_capacity=5.0, so the pool is near saturation; disconfirming condition not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-016",
+      "evidence_for": [
+        "[req-1792917680-1:pool_utilization_ratio] 0.8 — pool near saturation",
+        "[req-1792917680-1:pool_max_in_use] 4.0 equals pool_in_use=4.0, indicating sustained high usage"
+      ],
+      "evidence_against": [
+        "[req-1792917680-1:pool_capacity] 5.0 with pool_in_use=4.0 leaves one free connection, so not fully exhausted"
+      ],
+      "confidence": 0.65,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio remains low (well below saturation, e.g. < 0.7) with pool_in_use far below pool_capacity during the incident window, which would rule out connection pool exhaustion and shift focus to SM-013/SM-015.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 (>= 0.7) and pool_in_use=4.0 vs pool_capacity=5.0, so the pool is near saturation; disconfirming condition not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-013",
+      "evidence_for": [
+        "[req-1792917680-1:pool_utilization_ratio] 0.8 — high pool contention could amplify idempotency race effects"
+      ],
+      "evidence_against": [
+        "[req-1792917680-1:pool_in_use] 4.0 of 5.0 — no direct evidence of duplicate/racing charge requests"
+      ],
+      "confidence": 0.5,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio remains low (well below saturation, e.g. < 0.7) with pool_in_use far below pool_capacity during the incident window, which would rule out connection pool exhaustion and shift focus to SM-013/SM-015.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "Disconfirming condition targets pool exhaustion (SM-014/SM-016); pool_utilization_ratio=0.8 does not disconfirm SM-013, which remains untested by this metric."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-015",
+      "evidence_for": [
+        "[req-1792917680-1:pool_utilization_ratio] 0.8 — high pool contention could be a symptom of slow queries holding connections"
+      ],
+      "evidence_against": [
+        "[req-1792917680-1:pool_in_use] 4.0 of 5.0 — no direct evidence of missing index or N+1 query patterns"
+      ],
+      "confidence": 0.5,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio remains low (well below saturation, e.g. < 0.7) with pool_in_use far below pool_capacity during the incident window, which would rule out connection pool exhaustion and shift focus to SM-013/SM-015.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "Disconfirming condition targets pool exhaustion (SM-014/SM-016); pool_utilization_ratio=0.8 does not disconfirm SM-015, which remains untested by this metric."
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "SM-014",
+      "evidence_for": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 (80% of pool capacity in use)",
+        "[req-1792917680-2:pool_max_in_use] 4.0 of pool_capacity 5.0"
+      ],
+      "evidence_against": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 is below full saturation (1.0), so pool is not fully exhausted"
+      ],
+      "confidence": 0.7,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio < 0.5 (pool_in_use well below pool_capacity) during the alert window, which would indicate the pool is not exhausted and latency stems from another cause.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 >= 0.5, so the disconfirming condition is not met"
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "SM-016",
+      "evidence_for": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 (80% of pool capacity in use)",
+        "[req-1792917680-2:pool_max_in_use] 4.0 of pool_capacity 5.0"
+      ],
+      "evidence_against": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 is below full saturation (1.0), so pool is not fully exhausted"
+      ],
+      "confidence": 0.7,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio < 0.5 (pool_in_use well below pool_capacity) during the alert window, which would indicate the pool is not exhausted and latency stems from another cause.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 >= 0.5, so the disconfirming condition is not met"
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "SM-013",
+      "evidence_for": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 indicates elevated pool pressure consistent with contention"
+      ],
+      "evidence_against": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 does not directly evidence idempotency race"
+      ],
+      "confidence": 0.4,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio < 0.5 (pool_in_use well below pool_capacity) during the alert window, which would indicate the pool is not exhausted and latency stems from another cause.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 >= 0.5, so the disconfirming condition is not met; pool metrics do not rule out a race condition"
+    },
+    {
+      "iteration": 2,
+      "hypothesis_id": "SM-015",
+      "evidence_for": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 indicates elevated pool pressure consistent with slow queries holding connections"
+      ],
+      "evidence_against": [
+        "[req-1792917680-2:pool_utilization_ratio] 0.8 does not directly evidence missing index or N+1"
+      ],
+      "confidence": 0.4,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_utilization_ratio < 0.5 (pool_in_use well below pool_capacity) during the alert window, which would indicate the pool is not exhausted and latency stems from another cause.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=0.8 >= 0.5, so the disconfirming condition is not met; pool metrics do not rule out missing index / N+1"
+    }
+  ],
+  "remediation": {
+    "pr_url": "https://github.com/ayush-prataps/surveyops-target-app/pull/2",
+    "branch": "fix/connection_pool_exhaustion_1792917701",
+    "files_changed": [
+      "payment/main.py"
+    ],
+    "tests_added": [
+      "tests/test_connection_pool_exhaustion_regression.py"
+    ]
+  },
+  "timings": {
+    "detect": 60.0,
+    "diagnose": 50.30640006065369,
+    "remediate": 30.0,
+    "total": 140.3064000606537
+  },
+  "usage": {
+    "prompt_tokens": 8144,
+    "completion_tokens": 3959,
+    "total_tokens": 12103
+  }
+}

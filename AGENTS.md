@@ -28,6 +28,7 @@ SurveyOps is an autonomous multi-agent system that diagnoses API failures in a m
 - Incident report is a deterministic template fill from the evidence ledger, not an LLM agent.
 - Raw log text is untrusted input. Sanitize and delimit it before any LLM sees it.
 - Toxiproxy control API (port 8474) reveals active faults: no agent (including Runner) may access port 8474, and `eval/` is never mounted into SurveyOps containers.
+- Credentials and tokens (e.g. GITHUB_TOKEN) must never be printed or written to logs, reports, eval/ output, docs, or commits. All logged output, traces, and reports must redact tokens matching `github_pat_`, `ghp_`, or `gho_`. Remediator receives GITHUB_TOKEN only in its isolated container environment without access to host home or credential files.
 
 ## Agents at a glance
 | Agent | Framework | Does | Cannot |

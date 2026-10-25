@@ -25,7 +25,8 @@ Limitation: static analysis misses dynamic or reflective calls and runtime confi
 - Postgres table `propositions`: Surface Mapper output (OPEN: confirm, see DECISIONS.md).
 - Postgres tables for incidents, ledger, callback logs.
 - pgvector: semantic code index built by the Remediator's indexer, plus past incidents.
-- Cloned repo on a Docker volume (`/workspace/<project_id>/repo`).
+- Cloned repo on a workspace volume or local workspace (`TARGET_REPO_URL` pointing to `surveyops-target-app`). This standalone repo is the single authoritative source of truth for the target application code, test suite, and CI workflows; `services/target_app/` in this repository is legacy and non-authoritative.
+- Target repository branch governance: `main` is protected by a GitHub ruleset (pull request required, no bypass, CI check required). The Remediator has rights only to push feature branches and open PRs (`pull-requests: write`, `contents: write`), never merge.
 - Ground-truth store: separate from everything agents can reach. Written by the injection script, read only by the scorer.
 
 ## Dependency graph vs semantic index
