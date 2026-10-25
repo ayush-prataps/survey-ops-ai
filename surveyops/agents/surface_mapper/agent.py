@@ -188,8 +188,25 @@ STRICT RULES:
     )
 
 
+def resolve_target_app_dir(explicit_dir: str | Path | None = None) -> Path:
+    """Resolves target app directory prioritizing TARGET_REPO_DIR, TARGET_APP_DIR, sibling repo, then fallback."""
+    if explicit_dir and explicit_dir != "services/target_app":
+        p = Path(explicit_dir)
+        if p.exists():
+            return p
+    env_dir = os.getenv("TARGET_REPO_DIR") or os.getenv("TARGET_APP_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        if p.exists():
+            return p
+    sibling = Path(__file__).resolve().parent.parent.parent.parent / "surveyops-target-app"
+    if sibling.exists():
+        return sibling
+    return Path(explicit_dir or "services/target_app")
+
+
 def run_surface_mapper(
-    target_app_dir: str | Path = "services/target_app",
+    target_app_dir: str | Path | None = None,
     force_refresh: bool = False,
     cache_path: Optional[Path] = None,
     store_in_db: bool = True,
@@ -197,7 +214,7 @@ def run_surface_mapper(
 ) -> tuple[list[Proposition], ValidationReport, dict[str, Any]]:
     """
     Executes the Surface Mapper workflow:
-    1. Deterministically builds AST graph and parses OpenAPI specs.
+    1. Deterministically builds AST graph and parses OpenAPI specs from target repo.
     2. Checks disk cache; if found and not force_refresh, returns cached validated propositions.
     3. Otherwise runs CrewAI agent in JSON mode with retry adapter.
     4. Deterministically validates all propositions with guardrails.
@@ -209,7 +226,7 @@ def run_surface_mapper(
     model_name = model or os.getenv("MAPPER_MODEL")
     if not model_name:
         raise ValueError("MAPPER_MODEL environment variable is not configured")
-    app_dir = Path(target_app_dir)
+    app_dir = resolve_target_app_dir(target_app_dir)
     graph = build_target_app_graph(app_dir)
     spec = parse_system_specs(app_dir)
 

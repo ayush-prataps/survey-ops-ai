@@ -147,15 +147,26 @@ Last updated: 2026-10-19
 
 
 
+- Step 7 completed (Remediator CrewAI & A2A):
+  - CrewAI Remediator agent (`surveyops/agents/remediator/`): uses `REMEDIATOR_MODEL` (`deepseek/deepseek-flash`) via `execute_with_json_retry`, validates structured `PatchProposal` and `RemediationResult`, rejects non-root-cause outcomes (`abstained`, `budget_exhausted`).
+  - Target repo separation: `TARGET_REPO_URL` (`https://github.com/ayush-prataps/surveyops-target-app.git`) is canonical; Surface Mapper and Remediator read from target workspace volume.
+  - Semantic indexer (`indexer.py`): AST chunker and pgvector semantic index (`code_embeddings` in `surveyops_postgres`) confirming `graph_edge_ref` localization.
+  - Pydantic tools (`tools.py`): strict path allowlist (service sources and tests only; rejects `.github/`, Dockerfiles, `.env`, traversal), untrusted comment delimiter, AST syntax validation prior to writing, sandboxed subprocess test execution (`run_tests`), GitHub PR opening (`github_open_pr`, never merges).
+  - Rule 5 regression test enforcement: new test must fail on unpatched code and pass after patch; tests passing both ways or failing after patch are rejected with 1 retry.
+  - Observability & callbacks (`callbacks.py`): `step_callback` and `task_callback` logging structured JSON to `remediator_callback_logs` in `surveyops_postgres`.
+  - A2A server (`server.py`): FastAPI app on port 8006 with shared secret authentication middleware and non-blocking `asyncio.to_thread` execution.
+  - Unit tests (`tests/test_remediator.py`): 15/15 tests covering allowlist, forbidden files, path traversal, injection in comments, AST rollback, Rule 5, malformed payloads. All 147 test suite tests pass.
+  - Live E2E verification: pool fault injected -> Diagnostician converged on `connection_pool_exhaustion` (heuristic=0.88) -> A2A handoff to Remediator -> localized `payment/main.py` -> fail-before confirmed (`AssertionError`) -> patch applied -> pass-after confirmed -> PR opened on target repo -> branch and PR cleanly cleaned up.
+
 ## In progress
 - None
 
 ## Blocked
-- None (DeepSeek structured output unblocked via `surveyops/llm_utils.py` adapter).
+- None
 
 ## Next 3
-1. Real Remediator agent implementation (CrewAI).
-2. End-to-end evaluation benchmark across full fault catalog (5 faults).
+1. End-to-end evaluation benchmark across full fault catalog (5 faults).
+2. Incident report deterministic template fill from evidence ledger.
 3. Viva preparation and final cloud deployment.
 
 ## Consistency check findings (2026-10-14)

@@ -229,3 +229,8 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
   - Pool Fault: 6 / 6 correct `connection_pool_exhaustion` diagnoses (100.0%, 0 budget exhaustions, mean 24,857 tokens).
   - Control B: 3 / 3 correct abstains (100.0%, 0 confident-wrong, mean 5,064 tokens).
   - Confident-Wrong: 0 / 9 (0.0%). Mean tokens overall: 18,259 tokens (cut by ~70%).
+
+## 2026-10-25: Target App Repository Decoupling, Database Constraints, and PR Governance
+- **Target Repository Source of Truth:** The standalone GitHub repository `surveyops-target-app` (`https://github.com/ayush-prataps/surveyops-target-app.git`) is the canonical source of truth for the target application code, tests, and CI workflows. `survey-ops-ai` references it solely via `TARGET_REPO_URL`. The local directory `services/target_app/` inside `survey-ops-ai` is no longer authoritative and should be treated as legacy/read-only (CI, Surface Mapper, and Remediator now clone and execute against `surveyops-target-app`).
+- **Database Idempotency Constraint:** In `surveyops-target-app/db/init.sql`, `payments.idempotency_key` is enforced as `UNIQUE` at the PostgreSQL schema level. For any future idempotency race-condition fault injection branch, this unique constraint must be explicitly dropped or relaxed on that fault branch to permit race-condition reproduction.
+- **Repository Branch Protection & PR Governance:** The `main` branch of `surveyops-target-app` is protected by repository rulesets requiring pull requests, passing CI checks, and disallowing direct pushes or bypasses. The Remediator is restricted to branching, applying patches, adding regression tests, and opening PRs (`github_open_pr`); it possesses no merge authority.
