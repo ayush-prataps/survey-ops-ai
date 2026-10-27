@@ -1,0 +1,162 @@
+{
+  "incident_id": "inc-trial-1793044393",
+  "diagnosis": {
+    "incident_id": "inc-trial-1793044393",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "endpoint": "/payment/charge",
+    "supporting_proposition_id": "SM-014",
+    "graph_edge_ref": "payment.charge_payment() -> db.connection_pool",
+    "confidence": 0.8,
+    "self_reported_confidence": 0.78,
+    "ruled_out": [],
+    "iterations_used": 2
+  },
+  "evidence_trail": [
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-014",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 (pool fully saturated)",
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 equals [req-inc-trial-1793044393-1:pool_capacity] = 5.0"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_max_in_use] = 5.0 shows saturation is at the observed maximum, consistent with exhaustion but not proof of queuing latency"
+      ],
+      "confidence": 0.78,
+      "status": "dominant",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (>= 0.5) with pool_in_use=5.0 equal to pool_capacity=5.0, so the pool is saturated rather than underutilized; disconfirming condition not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-016",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 indicates full pool utilization",
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 at capacity 5.0 supports connection pool exhaustion"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_max_in_use] = 5.0 alone does not distinguish SM-016's specific pool mechanism from SM-014"
+      ],
+      "confidence": 0.7,
+      "status": "active",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (>= 0.5) with pool_in_use=5.0 at pool_capacity=5.0, so the pool is exhausted rather than underutilized; disconfirming condition not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-015",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 could also result from slow queries holding connections (missing index / N+1)"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 at capacity points primarily to pool exhaustion rather than query-plan inefficiency"
+      ],
+      "confidence": 0.45,
+      "status": "active",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (not < 0.5) and pool_in_use=5.0 equals capacity, so the condition that would shift focus to SM-015 was not met; SM-015 remains a secondary candidate."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-013",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 is consistent with contention that could accompany idempotency races"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 at capacity is better explained by pool exhaustion than by a race condition"
+      ],
+      "confidence": 0.4,
+      "status": "active",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (not < 0.5) with pool_in_use=5.0 at capacity, so the condition that would shift focus to SM-013 was not met; no evidence of race condition surfaced."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-014",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 (pool fully saturated)",
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 equals [req-inc-trial-1793044393-1:pool_capacity] = 5.0"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_max_in_use] = 5.0 shows saturation is at the observed maximum, consistent with exhaustion but not proof of queuing latency"
+      ],
+      "confidence": 0.78,
+      "status": "dominant",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (>= 0.5) with pool_in_use=5.0 equal to pool_capacity=5.0, so the pool is saturated rather than underutilized; disconfirming condition not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-016",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 indicates full pool utilization",
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 at capacity 5.0 supports connection pool exhaustion"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_max_in_use] = 5.0 alone does not distinguish SM-016's specific pool mechanism from SM-014"
+      ],
+      "confidence": 0.7,
+      "status": "active",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (>= 0.5) with pool_in_use=5.0 at pool_capacity=5.0, so the pool is exhausted rather than underutilized; disconfirming condition not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-015",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 could also result from slow queries holding connections (missing index / N+1)"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 at capacity points primarily to pool exhaustion rather than query-plan inefficiency"
+      ],
+      "confidence": 0.45,
+      "status": "active",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (not < 0.5) and pool_in_use=5.0 equals capacity, so the condition that would shift focus to SM-015 was not met; SM-015 remains a secondary candidate."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-013",
+      "evidence_for": [
+        "[req-inc-trial-1793044393-1:pool_utilization_ratio] = 1.0 is consistent with contention that could accompany idempotency races"
+      ],
+      "evidence_against": [
+        "[req-inc-trial-1793044393-1:pool_in_use] = 5.0 at capacity is better explained by pool exhaustion than by a race condition"
+      ],
+      "confidence": 0.4,
+      "status": "active",
+      "quoted_disconfirming_if": "Pool utilization ratio stays low (e.g., < 0.5) with in_use well below capacity during the latency window, which would rule out connection pool exhaustion and shift focus to SM-015 (missing index) or SM-013 (race condition).",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (not < 0.5) with pool_in_use=5.0 at capacity, so the condition that would shift focus to SM-013 was not met; no evidence of race condition surfaced."
+    }
+  ],
+  "remediation": {
+    "pr_url": "https://github.com/ayush-prataps/surveyops-target-app/pull/3",
+    "branch": "fix/connection_pool_exhaustion_1793044417",
+    "files_changed": [
+      "payment/main.py"
+    ],
+    "tests_added": [
+      "tests/test_connection_pool_exhaustion_regression.py"
+    ]
+  },
+  "timings": {
+    "detect": 60.0,
+    "diagnose": 52.91066384315491,
+    "remediate": 30.0,
+    "total": 142.9106638431549
+  },
+  "usage": {
+    "prompt_tokens": 13922,
+    "completion_tokens": 4626,
+    "total_tokens": 18548
+  }
+}

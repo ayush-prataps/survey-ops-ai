@@ -168,6 +168,14 @@ Last updated: 2026-10-19
   - Live E2E trial run: Diagnostician converged on `connection_pool_exhaustion` in 2 iterations (heuristic=0.80, 12,103 tokens); Remediator opened PR #2 on target repo; GitHub Actions CI check completed green (`success`); evaluation scorer verified correct (1.0); PR closed and branch deleted cleanly.
   - Test suite expanded to 151 tests (`pytest tests/` all passing).
 
+- Step 7c completed (Remediator MCP Server Conversion):
+  - FastMCP Remediator server (`surveyops/mcp_servers/remediator_server.py`): exposes `repo_read`, `apply_patch`, `write_test_file`, `run_tests`, and `github_open_pr` on `surveyops-remediator-tools`.
+  - DRY architecture: execution logic lives in `surveyops/agents/remediator/tools.py` with flexible argument signatures supporting both positional, keyword, and MCP callers.
+  - MCP ClientSession protocol: tools can be called via `execute_remediator_mcp_tool` over in-memory streams; full MCP dispatch supported in `run_remediation(..., use_mcp=True)` and via `REMEDIATOR_USE_MCP=true`.
+  - CrewAI wrappers (`surveyops/agents/remediator/crewai_tools.py`): exposes MCP-backed tools for CrewAI agent tool execution.
+  - Requirement 2 (2+ external tools via MCP) fully satisfied with both Runner and Remediator MCP servers complete.
+  - Test suite expanded to 153 tests (`pytest tests/` passing 100%).
+
 ## In progress
 - None
 

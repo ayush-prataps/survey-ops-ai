@@ -1,0 +1,15 @@
+{
+  "incident_id": "inc-trial-1793044393",
+  "fault_id": "fault-af11c960",
+  "timestamp": "2026-10-26T19:54:20.804868+00:00",
+  "ground_truth_failure_mode": "connection_pool_exhaustion",
+  "predicted_root_cause": "connection_pool_exhaustion",
+  "outcome": "root_cause",
+  "is_correct": true,
+  "confidence": 0.8,
+  "iterations_used": 2,
+  "remediation_pr_opened": true,
+  "pr_url": "https://github.com/ayush-prataps/surveyops-target-app/pull/3",
+  "total_tokens": 18548,
+  "total_duration_seconds": 142.9106638431549
+}

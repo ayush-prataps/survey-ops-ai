@@ -13,7 +13,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 import urllib.request
 import json
 from dotenv import load_dotenv
@@ -28,6 +28,7 @@ from surveyops.agents.remediator.workspace import (
     commit_and_push_changes,
     find_test_runner,
     redact_tokens,
+    resolve_target_repo_dir,
 )
 
 load_dotenv()
@@ -54,11 +55,12 @@ class ForbiddenPathError(Exception):
     pass
 
 
-def validate_path_allowlist(repo_dir: Path, rel_path: str) -> Path:
+def validate_path_allowlist(repo_dir: Path | str | None, rel_path: str) -> Path:
     """
     Validates that rel_path is strictly within the allowed service/test directories
     and does not touch forbidden config/CI/secrets files or escape the repo directory.
     """
+    target_repo = Path(repo_dir) if repo_dir else resolve_target_repo_dir()
     cleaned = rel_path.strip().lstrip("/")
     lowered = cleaned.lower()
 
@@ -77,8 +79,8 @@ def validate_path_allowlist(repo_dir: Path, rel_path: str) -> Path:
             f"Path '{rel_path}' is not in the allowed service or test directories: {ALLOWED_PREFIXES}"
         )
 
-    resolved = (repo_dir / cleaned).resolve()
-    repo_resolved = repo_dir.resolve()
+    resolved = (target_repo / cleaned).resolve()
+    repo_resolved = target_repo.resolve()
     if not str(resolved).startswith(str(repo_resolved)):
         raise ForbiddenPathError(f"Path escaped repository boundary: {rel_path}")
 
@@ -97,9 +99,19 @@ def delimit_untrusted_content(file_path: str, content: str) -> str:
     )
 
 
-def repo_read(repo_dir: Path, file_path: str) -> RepoReadResult:
+def repo_read(
+    repo_dir: Path | str | None = None,
+    file_path: str = "",
+) -> RepoReadResult:
     """Reads a file from the repository with path allowlisting and untrusted text delimitation."""
-    target = validate_path_allowlist(repo_dir, file_path)
+    if not file_path and isinstance(repo_dir, str):
+        file_path, repo_dir = repo_dir, None
+
+    if not file_path:
+        raise ValueError("file_path is required")
+
+    target_repo = Path(repo_dir) if repo_dir else resolve_target_repo_dir()
+    target = validate_path_allowlist(target_repo, file_path)
     if not target.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -116,16 +128,20 @@ def repo_read(repo_dir: Path, file_path: str) -> RepoReadResult:
 
 
 def apply_patch(
-    repo_dir: Path,
-    file_path: str,
-    original_snippet: str,
-    replacement_snippet: str,
+    repo_dir: Path | str | None = None,
+    file_path: str = "",
+    original_snippet: str = "",
+    replacement_snippet: str = "",
 ) -> PatchResult:
     """
     Replaces original_snippet with replacement_snippet in file_path.
     Validates that the resulting file is syntactically valid Python before writing to disk.
     """
-    target = validate_path_allowlist(repo_dir, file_path)
+    if not replacement_snippet and isinstance(repo_dir, str) and not Path(str(repo_dir)).is_dir():
+        replacement_snippet, original_snippet, file_path, repo_dir = original_snippet, file_path, repo_dir, None
+
+    target_repo = Path(repo_dir) if repo_dir else resolve_target_repo_dir()
+    target = validate_path_allowlist(target_repo, file_path)
     if not target.exists():
         return PatchResult(success=False, file_path=file_path, error=f"File not found: {file_path}")
 
@@ -155,9 +171,17 @@ def apply_patch(
     return PatchResult(success=True, file_path=file_path, syntax_valid=True)
 
 
-def write_test_file(repo_dir: Path, test_file_path: str, test_code: str) -> PatchResult:
+def write_test_file(
+    repo_dir: Path | str | None = None,
+    test_file_path: str = "",
+    test_code: str = "",
+) -> PatchResult:
     """Writes a new regression test file to the repo under tests/."""
-    target = validate_path_allowlist(repo_dir, test_file_path)
+    if not test_code and isinstance(repo_dir, str) and not Path(str(repo_dir)).is_dir():
+        test_code, test_file_path, repo_dir = test_file_path, repo_dir, None
+
+    target_repo = Path(repo_dir) if repo_dir else resolve_target_repo_dir()
+    target = validate_path_allowlist(target_repo, test_file_path)
     if not test_file_path.startswith("tests/"):
         return PatchResult(
             success=False,
@@ -183,7 +207,7 @@ def write_test_file(repo_dir: Path, test_file_path: str, test_code: str) -> Patc
 
 
 def run_tests(
-    repo_dir: Path,
+    repo_dir: Path | str | None = None,
     test_file: Optional[str] = None,
     timeout_seconds: int = 60,
 ) -> TestRunResult:
@@ -191,7 +215,11 @@ def run_tests(
     Runs pytest in the target repository using sandboxed subprocess with timeout.
     Returns structured TestRunResult.
     """
-    runner_cmd = find_test_runner(repo_dir)
+    if isinstance(repo_dir, str) and not Path(str(repo_dir)).is_dir() and test_file is None:
+        test_file, repo_dir = repo_dir, None
+
+    target_repo = Path(repo_dir) if repo_dir else resolve_target_repo_dir()
+    runner_cmd = find_test_runner(target_repo)
     cmd = list(runner_cmd)
     if test_file:
         cmd.append(test_file)
@@ -202,7 +230,7 @@ def run_tests(
     try:
         proc = subprocess.run(
             cmd,
-            cwd=repo_dir,
+            cwd=target_repo,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -263,16 +291,20 @@ def run_tests(
 
 
 def github_open_pr(
-    repo_dir: Path,
-    branch_name: str,
-    title: str,
-    body: str,
+    repo_dir: Path | str | None = None,
+    branch_name: str = "",
+    title: str = "",
+    body: str = "",
     base_branch: str = "main",
 ) -> PRResult:
     """
     Pushes the fix branch to GitHub and opens a pull request via the GitHub REST API.
     NEVER merges any pull request.
     """
+    if not body and isinstance(repo_dir, str) and not Path(str(repo_dir)).is_dir():
+        body, title, branch_name, repo_dir = title, branch_name, repo_dir, None
+
+    target_repo = Path(repo_dir) if repo_dir else resolve_target_repo_dir()
     token = os.getenv("GITHUB_TOKEN")
     repo_url = os.getenv("TARGET_REPO_URL", "https://github.com/ayush-prataps/surveyops-target-app.git")
 
@@ -285,7 +317,7 @@ def github_open_pr(
 
     # First push branch to remote
     try:
-        commit_and_push_changes(repo_dir, branch_name, title)
+        commit_and_push_changes(target_repo, branch_name, title)
     except Exception as exc:
         return PRResult(success=False, branch=branch_name, error=f"Failed to push branch: {exc}")
 
@@ -338,3 +370,16 @@ def github_open_pr(
         clean_err = redact_tokens(str(exc))
         logger.error(f"Failed to open GitHub PR: {clean_err}")
         return PRResult(success=False, branch=branch_name, error=clean_err)
+
+
+def execute_remediator_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Executes a Remediator tool via MCP ClientSession connected to remediator_mcp_server."""
+    from surveyops.mcp_servers.remediator_server import execute_remediator_mcp_tool as _exec
+    return _exec(tool_name, arguments)
+
+
+async def call_remediator_mcp_tool_async(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Executes a Remediator tool asynchronously via MCP ClientSession."""
+    from surveyops.mcp_servers.remediator_server import _call_remediator_mcp_tool as _call_async
+    return await _call_async(tool_name, arguments)
+
