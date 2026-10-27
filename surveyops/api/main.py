@@ -308,6 +308,44 @@ def post_close_incident(
     raise HTTPException(status_code=400, detail="Must provide incident_id or both service and endpoint")
 
 
+@app.post("/trial/reset")
+def post_trial_reset(
+    x_shared_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """
+    Closes all open incidents, clears the in-memory dedup store,
+    and clears the PostgreSQL demo events table for the trial.
+    Protected by shared secret.
+    """
+    _verify_auth(x_shared_secret, authorization)
+
+    # 1. Clear in-memory dedup store
+    open_count = len(dedup_store.list_open())
+    dedup_store.clear()
+
+    # 2. Clear events in surveyops_postgres
+    events_cleared = False
+    try:
+        from surveyops.events import get_surveyops_postgres_conn
+        conn = get_surveyops_postgres_conn()
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE TABLE events RESTART IDENTITY;")
+        conn.close()
+        events_cleared = True
+        logger.info("Truncated events table in surveyops_postgres.")
+    except Exception as exc:
+        logger.warning(f"Could not truncate events table in surveyops_postgres: {exc}")
+
+    logger.info(f"Trial reset completed on surveyops-api (open_incidents_cleared={open_count})")
+    return {
+        "status": "reset",
+        "open_incidents_cleared": open_count,
+        "events_truncated": events_cleared,
+    }
+
+
 ENABLE_BACKGROUND_DIAGNOSTICIAN = os.environ.get("ENABLE_BACKGROUND_DIAGNOSTICIAN", "false").lower() in ("true", "1")
 
 
@@ -326,6 +364,22 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
             "Diagnostician run completed",
             extra={"extra_fields": {"incident_id": incident_id, "outcome": diagnosis.outcome.value}},
         )
+        try:
+            from surveyops.events import record_event
+            record_event(
+                incident_id,
+                "api",
+                "investigation_completed",
+                {
+                    "outcome": diagnosis.outcome.value,
+                    "root_cause": diagnosis.root_cause,
+                    "confidence": diagnosis.confidence,
+                    "iterations_used": diagnosis.iterations_used,
+                    "duration_seconds": diag_dur,
+                },
+            )
+        except Exception:
+            pass
 
         # Generate deterministic IncidentReport and save to DB and eval/reports/
         try:
@@ -365,6 +419,16 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
             extra={"extra_fields": {"incident_id": incident_id, "error": str(exc)}},
             exc_info=True,
         )
+        try:
+            from surveyops.events import record_event
+            record_event(
+                incident_id,
+                "api",
+                "investigation_failed",
+                {"error": str(exc)},
+            )
+        except Exception:
+            pass
     finally:
         closed = dedup_store.close_incident_by_id(incident_id)
         logger.info(
@@ -448,6 +512,20 @@ async def investigate(
                 "endpoint": validated.endpoint,
                 "alert": validated.alert,
             })
+            try:
+                from surveyops.events import record_event
+                record_event(
+                    incident_id,
+                    "api",
+                    "duplicate_ignored",
+                    {
+                        "alert": validated.alert,
+                        "service": validated.service,
+                        "endpoint": validated.endpoint,
+                    },
+                )
+            except Exception:
+                pass
             continue
 
         logger.info(
@@ -457,13 +535,34 @@ async def investigate(
                 "payload": validated.model_dump(mode="json"),
             }},
         )
+        try:
+            from surveyops.events import record_event
+            record_event(
+                incident_id,
+                "api",
+                "incident_opened",
+                {
+                    "alert": validated.alert,
+                    "service": validated.service,
+                    "endpoint": validated.endpoint,
+                    "metric": validated.metric,
+                    "threshold": validated.threshold,
+                    "window_start": validated.window_start.isoformat(),
+                },
+            )
+        except Exception:
+            pass
         accepted_item = validated.model_dump(mode="json")
         accepted_item["incident_id"] = incident_id
         accepted.append(accepted_item)
 
         # Trigger background Diagnostician run (Requirement 9)
         if ENABLE_BACKGROUND_DIAGNOSTICIAN:
-            asyncio.create_task(_run_diagnostician_background(incident_id, validated))
+            try:
+                asyncio.create_task(_run_diagnostician_background(incident_id, validated))
+            except Exception as task_exc:
+                logger.error(f"Failed to dispatch background task for {incident_id}: {task_exc}")
+                dedup_store.close_incident_by_id(incident_id)
 
     return {
         "accepted": len(accepted),

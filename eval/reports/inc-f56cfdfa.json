@@ -1,0 +1,29 @@
+{
+  "incident_id": "inc-f56cfdfa",
+  "diagnosis": {
+    "incident_id": "inc-f56cfdfa",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "endpoint": "/payment/charge",
+    "supporting_proposition_id": "SM-007",
+    "graph_edge_ref": "payment.charge() -> db.connection_pool",
+    "confidence": 0.92,
+    "self_reported_confidence": null,
+    "ruled_out": [
+      "SM-006"
+    ],
+    "iterations_used": 2
+  },
+  "evidence_trail": [],
+  "remediation": null,
+  "timings": {
+    "detect": 60.0,
+    "diagnose": 0.000021219253540039062,
+    "total": 60.00002121925354
+  },
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  }
+}

@@ -101,6 +101,7 @@ def create_fix_branch(repo_dir: Path, branch_name: str) -> None:
     # Ensure working tree is clean or discard unstaged edits
     subprocess.run(["git", "checkout", "main"], cwd=repo_dir, capture_output=True, check=False)
     subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=repo_dir, capture_output=True, check=False)
+    subprocess.run(["git", "clean", "-fd"], cwd=repo_dir, capture_output=True, check=False)
 
     # Pull latest from origin main if remote is accessible
     subprocess.run(["git", "pull", "--rebase", "origin", "main"], cwd=repo_dir, capture_output=True, check=False)

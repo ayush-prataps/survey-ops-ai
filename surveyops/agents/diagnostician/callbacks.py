@@ -18,6 +18,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.agents.context import Context
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
+from surveyops.events import record_event
 from .cache import global_llm_cache
 
 logger = logging.getLogger("surveyops.diagnostician")
@@ -37,6 +38,11 @@ def _log_event(event_type: str, data: dict[str, Any]) -> None:
     }
     payload.update(data)
     logger.info(json.dumps(payload))
+    inc_id = str(data.get("incident_id") or "unknown_incident")
+    try:
+        record_event(inc_id, "diagnostician", event_type, data)
+    except Exception:
+        pass
 
 
 class TokenUsageTracker:

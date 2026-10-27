@@ -176,6 +176,36 @@ Last updated: 2026-10-19
   - Requirement 2 (2+ external tools via MCP) fully satisfied with both Runner and Remediator MCP servers complete.
   - Test suite expanded to 153 tests (`pytest tests/` passing 100%).
 
+- Step 8 completed (Demo UI, Events Table, Controller Service, and Double-Blind Reveal):
+  - Added `events` table in `surveyops_postgres` (`id`, `incident_id`, `ts`, `component`, `event_type`, `payload` JSONB) with indices and in-memory fallback.
+  - Integrated structured event emission across ADK Diagnostician callbacks/agents, CrewAI Remediator callbacks/agents, the `/investigate` API handler, the Runner, and the deterministic report generator while retaining stdout logging.
+  - Mandatory token redaction for `github_pat_`, `ghp_`, and `gho_` plus sensitive keys, and strict invariant preventing ground truth from ever entering events.
+  - Controller service (`surveyops_controller` on port 8088): isolated on `data_net` and `controller_net` with shared secret auth; exposes `POST /inject` and `POST /reset`. Agents cannot reach controller or Toxiproxy.
+  - Demo UI service (`surveyops_demo_ui` on port 8050): single static HTML page with vanilla JS and CSS, large projector typography, live SSE stream (`GET /events/stream`), incident inspection, and controller proxy endpoints.
+  - Double-blind evaluation: ground truth is concealed until explicit execution of `POST /demo/reveal`, running `eval.scorer.scorer.score_incident` to reveal the verdict post-run.
+  - Replay mode: supports exporting events to `eval/replays/<name>.json` and streaming historical replays at relative timing with prominent `REPLAY` branding.
+  - Test suite expanded to 173 tests (`pytest tests/` passing 100%): 13 dedicated demo UI, event redaction, SSE stream, and controller auth tests.
+
+- Step 9 completed (Architecture-First Demo UI Overhaul & Hardened Event Persistence):
+  - Postgres enforced as single source of truth for events: eliminated silent in-memory fallback in `events.py` (raises `RuntimeError` loudly on DB connection error), ensuring all containers share the identical persistent event stream.
+  - Fixed 5 root causes of previous inject inaction: missing event call in controller `/inject`, runner crash loop caused by eager CrewAI import in `mcp_servers`, surveyops-api Docker packaging missing package files, and background thread termination.
+  - Data-driven SVG architecture visualization: driven by `architecture_config.json`, mapping Docker networks (`target_net`, `data_net`, `ops_net`, `controller_net`, `external`), 18 distinct components (blue for software, green for agents), protocol edges, and dashed red forbidden paths with `[X]` markers.
+  - Interactive Node Inspector, 1-line Phase Narration, active-incident Diagnostician iteration table, and live mini-strip.
+  - Controller `GET /metrics/summary`: strictly named Prometheus & Postgres queries for payment p99, pool in-use/capacity, and alert state; rejects arbitrary PromQL with HTTP 400.
+  - Simplified Controls: exactly 3 visible header buttons (`Inject`, `Reset`, `Reveal`) with secondary Replay options menu. Pure flat dark neutral palette, no emojis, no gradients, no glow effects, projector-readable Inter typography, and inline status messages without browser `alert()` popups.
+  - Test suite expanded to 178 tests (`pytest tests/` passing 100%).
+
+- Step 10 completed (Alert-to-Agent Gap Closure, Reliability Tuning, and Safety Banner):
+  - Alertmanager configuration: set `group_wait: 10s` and `repeat_interval: 5m` in `infra/alertmanager/alertmanager.yml`.
+  - Guaranteed `finally` cleanup in `_run_diagnostician_background` on `surveyops_api` releasing incident locks on all exit paths.
+  - Added authenticated `POST /trial/reset` on `surveyops_api` invoked synchronously by controller on `/reset`.
+  - Served static architecture config at `/static/architecture_config.json` with fallback and unit tests.
+  - Verified toxic clearing and strip recovery: latency dropped from 10s to 49.5ms in 28s, alert normalized at 35s.
+  - Demo UI displays `"Alert firing, waiting for /investigate"` when firing before incident creation, and surfaces a visible warning banner after 90s timeout.
+  - Full live end-to-end cycle verified: alert firing -> `/investigate` received -> Diagnostician loop (3 iters) -> Remediator A2A -> PR #5 opened -> postmortem report written to DB -> PR and branch cleaned up.
+  - Pinned `litellm==1.105.1` and `mcp==1.28.1`, installed Remediator test dependencies, added `git clean -fd` to avoid untracked test accumulation.
+  - Test suite expanded to 180 tests (`pytest tests/` passing 100%).
+
 ## In progress
 - None
 

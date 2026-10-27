@@ -220,7 +220,7 @@ def run_remediation(
         )
 
     target_repo = repo_dir or resolve_target_repo_dir()
-    handler = callbacks or RemediatorCallbackHandler()
+    handler = callbacks or RemediatorCallbackHandler(incident_id=diagnosis.incident_id)
     should_use_mcp = (
         use_mcp
         if use_mcp is not None
@@ -303,6 +303,16 @@ def run_remediation(
         logger.warning(
             f"Regression test passed on unpatched code! Rejecting test per Rule 5. Output: {pre_run.stdout}"
         )
+        try:
+            from surveyops.events import record_event
+            record_event(
+                diagnosis.incident_id,
+                "guardrail",
+                "guardrail_rejection",
+                {"boundary": "rule_5_regression_test", "reason": "Test passed on unpatched code"},
+            )
+        except Exception:
+            pass
         # Attempt one retry with feedback to author a truly failing test
         retry_prompt = construct_patch_prompt(
             diagnosis,
@@ -327,6 +337,17 @@ def run_remediation(
         proposal.original_snippet,
         proposal.replacement_snippet,
     )
+    if patch_res.success:
+        try:
+            from surveyops.events import record_event
+            record_event(
+                diagnosis.incident_id,
+                "remediator",
+                "patch_applied",
+                {"target_file": proposal.target_file, "diff": proposal.diff, "explanation": proposal.explanation},
+            )
+        except Exception:
+            pass
     if not patch_res.success:
         logger.warning(f"Patch application failed: {patch_res.error}. Retrying with LLM feedback...")
         retry_prompt = construct_patch_prompt(
@@ -389,6 +410,22 @@ def run_remediation(
     run_remediation.last_pre_run = pre_run
     run_remediation.last_post_run = post_run
     logger.info(f"Remediation successfully completed! Opened PR: {pr_res.pr_url}")
+    try:
+        from surveyops.events import record_event
+        record_event(
+            diagnosis.incident_id,
+            "remediator",
+            "pr_opened",
+            {
+                "pr_url": pr_res.pr_url,
+                "pr_number": pr_res.pr_number,
+                "branch": branch_name,
+                "target_file": proposal.target_file,
+                "regression_test_file": proposal.regression_test_file,
+            },
+        )
+    except Exception:
+        pass
     return RemediationResult(
         pr_url=pr_res.pr_url,
         branch=branch_name,

@@ -294,4 +294,22 @@ def generate_and_save_report(
     # Write to eval/reports/
     json_path, md_path = save_report_to_disk(report, md, output_dir=output_dir)
 
+    try:
+        from surveyops.events import record_event
+        record_event(
+            incident_id,
+            "report",
+            "report_generated",
+            {
+                "outcome": report.diagnosis.outcome.value,
+                "root_cause": report.diagnosis.root_cause,
+                "confidence": report.diagnosis.confidence,
+                "pr_url": report.remediation.pr_url if report.remediation else None,
+                "json_path": str(json_path),
+                "md_path": str(md_path),
+            },
+        )
+    except Exception:
+        pass
+
     return report, json_path, md_path

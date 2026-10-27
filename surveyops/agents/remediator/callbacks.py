@@ -47,8 +47,9 @@ def init_callback_logs_table(db_url: Optional[str] = None) -> None:
 class RemediatorCallbackHandler:
     """CrewAI step and task callback handler recording structured JSON."""
 
-    def __init__(self, db_url: Optional[str] = None) -> None:
+    def __init__(self, db_url: Optional[str] = None, incident_id: Optional[str] = None) -> None:
         self.db_url = db_url or get_db_url()
+        self.incident_id = incident_id or "remediator"
         self.step_logs: list[dict[str, Any]] = []
         self.task_logs: list[dict[str, Any]] = []
         self._step_start_time: float = time.time()
@@ -118,7 +119,18 @@ class RemediatorCallbackHandler:
         self._persist(record)
 
     def _persist(self, record: dict[str, Any]) -> None:
-        """Persists structured callback log to surveyops_postgres."""
+        """Persists structured callback log to surveyops_postgres and events."""
+        try:
+            from surveyops.events import record_event
+            record_event(
+                self.incident_id,
+                "remediator",
+                record["event_type"],
+                record,
+            )
+        except Exception:
+            pass
+
         try:
             conn = psycopg2.connect(self.db_url)
             with conn.cursor() as cur:

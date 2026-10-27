@@ -501,6 +501,7 @@ class A2ARunnerDispatcherAgent(BaseAgent):
         observation: Observation
         disconfirming_tested = list(ctx.session.state.get("disconfirming_hypotheses_tested", []))
 
+        inc_id = str(ctx.session.state.get("incident_id") or "unknown_incident")
         if guardrail_error:
             # Produce synthetic observation recording rejection rather than crashing
             observation = Observation(
@@ -509,11 +510,31 @@ class A2ARunnerDispatcherAgent(BaseAgent):
                 data={"error": guardrail_error, "status": "rejected_by_guardrail"},
                 collected_at=datetime.now(timezone.utc),
             )
+            try:
+                from surveyops.events import record_event
+                record_event(
+                    inc_id,
+                    "guardrail",
+                    "guardrail_rejection",
+                    {"boundary": "falsification", "reason": guardrail_error, "request_id": req.request_id},
+                )
+            except Exception:
+                pass
         else:
             # 3. Send over A2A to the Runner
             observation = await execute_runner_a2a_request(self.runner_url, self.shared_secret, req)
             if req.hypothesis_id not in disconfirming_tested and not observation.source.startswith("runner_") and not observation.source.startswith("a2a_"):
                 disconfirming_tested.append(req.hypothesis_id)
+            try:
+                from surveyops.events import record_event
+                record_event(
+                    inc_id,
+                    "runner",
+                    "observation_received",
+                    {"request_id": observation.request_id, "source": observation.source, "data": observation.data},
+                )
+            except Exception:
+                pass
 
         print(f"\n[RAW OBSERVATION] Request ID: {observation.request_id} | Source: {observation.source}:")
         print(f"  Collected At: {observation.collected_at}")
@@ -654,6 +675,34 @@ class ExitDecisionAgent(BaseAgent):
             f"ExitDecision (iteration {iteration}/{max_iterations}): should_exit={exit_decision.should_exit}, "
             f"outcome={exit_decision.outcome.value}, reason={exit_decision.reason}"
         )
+        try:
+            from surveyops.events import record_event
+            record_event(
+                incident_id,
+                "diagnostician",
+                "ledger_updated",
+                {
+                    "iteration": iteration,
+                    "hypotheses": [h.model_dump() for h in hypotheses],
+                    "ledger_entries": [e.model_dump() for e in existing_ledger],
+                    "status_changes": status_change_log if 'status_change_log' in locals() else [],
+                },
+            )
+            record_event(
+                incident_id,
+                "diagnostician",
+                "exit_decision",
+                {
+                    "iteration": iteration,
+                    "should_exit": exit_decision.should_exit,
+                    "outcome": exit_decision.outcome.value,
+                    "confidence": exit_decision.confidence,
+                    "reason": exit_decision.reason,
+                    "top_hypothesis": exit_decision.top_hypothesis.model_dump() if exit_decision.top_hypothesis else None,
+                },
+            )
+        except Exception:
+            pass
 
         # Track leader and margin for convergence checks
         active_hyps = [h for h in hypotheses if h.status != "ruled_out"]

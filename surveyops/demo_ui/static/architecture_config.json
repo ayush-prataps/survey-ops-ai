@@ -1,0 +1,472 @@
+{
+  "zones": [
+    {
+      "id": "target_net",
+      "label": "target_net (Microservices & Monitoring)",
+      "color": "#1e293b",
+      "stroke": "#334155",
+      "x": 20,
+      "y": 20,
+      "width": 460,
+      "height": 480
+    },
+    {
+      "id": "data_net",
+      "label": "data_net (Data Stores & Proxies)",
+      "color": "#0f172a",
+      "stroke": "#334155",
+      "x": 20,
+      "y": 520,
+      "width": 460,
+      "height": 260
+    },
+    {
+      "id": "ops_net",
+      "label": "ops_net (SurveyOps Autonomous Agent System)",
+      "color": "#111827",
+      "stroke": "#1f2937",
+      "x": 510,
+      "y": 20,
+      "width": 550,
+      "height": 590
+    },
+    {
+      "id": "controller_net",
+      "label": "controller_net (Isolated Demo Controller)",
+      "color": "#090d16",
+      "stroke": "#1e293b",
+      "x": 510,
+      "y": 630,
+      "width": 260,
+      "height": 150
+    },
+    {
+      "id": "external",
+      "label": "External (GitHub & Human Operator)",
+      "color": "#0b0f19",
+      "stroke": "#1e293b",
+      "x": 800,
+      "y": 630,
+      "width": 260,
+      "height": 150
+    }
+  ],
+  "nodes": [
+    {
+      "id": "load_generator",
+      "label": "Load Generator",
+      "category": "software",
+      "zone": "target_net",
+      "x": 40,
+      "y": 60,
+      "width": 120,
+      "height": 46,
+      "role": "Generates synthetic traffic for checkout & payments",
+      "framework": "Locust / Python",
+      "can_access": "orders:8001, payment:8002",
+      "cannot_do": "Direct database or internal state access",
+      "source_file": "infra/load_generator/"
+    },
+    {
+      "id": "orders",
+      "label": "Orders Service",
+      "category": "software",
+      "zone": "target_net",
+      "x": 190,
+      "y": 60,
+      "width": 120,
+      "height": 46,
+      "role": "Order creation, saga coordination, dispatching",
+      "framework": "FastAPI / Python",
+      "can_access": "payment:8002, inventory:8003, auth:8004",
+      "cannot_do": "Autonomous remediation, agent operations",
+      "source_file": "services/target_app/orders/main.py"
+    },
+    {
+      "id": "payment",
+      "label": "Payment Service",
+      "category": "software",
+      "zone": "target_net",
+      "x": 340,
+      "y": 60,
+      "width": 120,
+      "height": 46,
+      "role": "Charges processing with explicit DB connection pool",
+      "framework": "FastAPI / SQLAlchemy QueuePool",
+      "can_access": "Toxiproxy:5433 (payment-postgres)",
+      "cannot_do": "Direct target Postgres bypass, agent orchestration",
+      "source_file": "services/target_app/payment/main.py"
+    },
+    {
+      "id": "inventory",
+      "label": "Inventory Service",
+      "category": "software",
+      "zone": "target_net",
+      "x": 190,
+      "y": 140,
+      "width": 120,
+      "height": 46,
+      "role": "Stock management & item reservations",
+      "framework": "FastAPI / Python",
+      "can_access": "Target Postgres (data_net)",
+      "cannot_do": "Financial transactions",
+      "source_file": "services/target_app/inventory/main.py"
+    },
+    {
+      "id": "auth",
+      "label": "Auth Service",
+      "category": "software",
+      "zone": "target_net",
+      "x": 40,
+      "y": 140,
+      "width": 120,
+      "height": 46,
+      "role": "User auth & JWT token validation",
+      "framework": "FastAPI / Python",
+      "can_access": "Target Postgres",
+      "cannot_do": "Order fulfillment",
+      "source_file": "services/target_app/auth/main.py"
+    },
+    {
+      "id": "prometheus",
+      "label": "Prometheus",
+      "category": "software",
+      "zone": "target_net",
+      "x": 80,
+      "y": 250,
+      "width": 130,
+      "height": 46,
+      "role": "Time-series metrics scraping & threshold rule evaluation",
+      "framework": "Prometheus v2.54.1",
+      "can_access": "Scrapes target_net services on /metrics",
+      "cannot_do": "Root cause interpretation or execution",
+      "source_file": "infra/prometheus/alert_rules.yml"
+    },
+    {
+      "id": "alertmanager",
+      "label": "Alertmanager",
+      "category": "software",
+      "zone": "target_net",
+      "x": 280,
+      "y": 250,
+      "width": 130,
+      "height": 46,
+      "role": "Alert deduplication, grouping, deterministic webhook delivery",
+      "framework": "Alertmanager v0.27.0",
+      "can_access": "Webhook to surveyops_api:8000/investigate",
+      "cannot_do": "Code changes or automated diagnosis",
+      "source_file": "infra/alertmanager/alertmanager.yml"
+    },
+    {
+      "id": "toxiproxy",
+      "label": "Toxiproxy",
+      "category": "software",
+      "zone": "data_net",
+      "x": 60,
+      "y": 570,
+      "width": 150,
+      "height": 50,
+      "role": "Simulates network latency, bandwidth limits, TCP down",
+      "framework": "Shopify Toxiproxy v2",
+      "can_access": "target_postgres:5432",
+      "cannot_do": "Agents forbidden from Toxiproxy control port 8474",
+      "source_file": "infra/docker-compose.yml"
+    },
+    {
+      "id": "target_postgres",
+      "label": "Target Postgres",
+      "category": "software",
+      "zone": "data_net",
+      "x": 270,
+      "y": 570,
+      "width": 160,
+      "height": 50,
+      "role": "Relational storage for target app (orders, payments, users)",
+      "framework": "PostgreSQL 16",
+      "can_access": "Internal target database connections",
+      "cannot_do": "Outbound execution",
+      "source_file": "infra/postgres/init.sql"
+    },
+    {
+      "id": "surveyops_api",
+      "label": "SurveyOps API",
+      "category": "software",
+      "zone": "ops_net",
+      "x": 530,
+      "y": 60,
+      "width": 140,
+      "height": 46,
+      "role": "Ingests /investigate webhook, validates HMAC secret, triggers agents",
+      "framework": "FastAPI / Python",
+      "can_access": "surveyops_postgres, diagnostician, surface_mapper",
+      "cannot_do": "Direct target app modification",
+      "source_file": "surveyops/api/main.py"
+    },
+    {
+      "id": "surveyops_postgres",
+      "label": "SurveyOps DB",
+      "category": "software",
+      "zone": "ops_net",
+      "x": 720,
+      "y": 60,
+      "width": 150,
+      "height": 46,
+      "role": "Single source of truth for events ledger, traces, incident state",
+      "framework": "PostgreSQL 16",
+      "can_access": "ops_net read/write",
+      "cannot_do": "Access to target_app DB",
+      "source_file": "surveyops/events.py"
+    },
+    {
+      "id": "surface_mapper",
+      "label": "Surface Mapper",
+      "category": "agent",
+      "zone": "ops_net",
+      "x": 530,
+      "y": 160,
+      "width": 140,
+      "height": 50,
+      "role": "Static code + OpenAPI analysis -> unranked failure propositions",
+      "framework": "CrewAI",
+      "can_access": "Target app source code, schemas, OpenAPI specs",
+      "cannot_do": "CANNOT receive runtime metrics, logs, or incident alerts",
+      "source_file": "surveyops/agents/surface_mapper/agent.py"
+    },
+    {
+      "id": "diagnostician",
+      "label": "Diagnostician",
+      "category": "agent",
+      "zone": "ops_net",
+      "x": 720,
+      "y": 160,
+      "width": 150,
+      "height": 50,
+      "role": "Scientific falsification loop: hypothesize -> challenge -> experiment",
+      "framework": "Google ADK (LoopAgent)",
+      "can_access": "A2A to Runner, A2A to Remediator, Evidence Ledger",
+      "cannot_do": "CANNOT execute commands on target system directly",
+      "source_file": "surveyops/agents/diagnostician/loop_agent.py"
+    },
+    {
+      "id": "runner",
+      "label": "Experiment Runner",
+      "category": "agent",
+      "zone": "ops_net",
+      "x": 530,
+      "y": 280,
+      "width": 150,
+      "height": 50,
+      "role": "Executes diagnostic probes via MCP; returns raw observations",
+      "framework": "Google ADK",
+      "can_access": "Prometheus MCP, Logs MCP, Loadtest MCP (target_net)",
+      "cannot_do": "CANNOT interpret root causes; CANNOT reach Toxiproxy port 8474",
+      "source_file": "surveyops/agents/runner/agent.py"
+    },
+    {
+      "id": "remediator",
+      "label": "Remediator",
+      "category": "agent",
+      "zone": "ops_net",
+      "x": 720,
+      "y": 280,
+      "width": 150,
+      "height": 50,
+      "role": "Fault localization, targeted code patch, regression test, draft PR",
+      "framework": "CrewAI",
+      "can_access": "Repo MCP, Test Runner MCP, GitHub MCP",
+      "cannot_do": "CANNOT merge PR; CANNOT modify CI or repository credentials",
+      "source_file": "surveyops/agents/remediator/agent.py"
+    },
+    {
+      "id": "demo_ui",
+      "label": "Demo UI",
+      "category": "software",
+      "zone": "ops_net",
+      "x": 620,
+      "y": 420,
+      "width": 150,
+      "height": 46,
+      "role": "Architecture-first visualization, SSE live events, replay engine",
+      "framework": "FastAPI / Vanilla JS",
+      "can_access": "surveyops_postgres:5432, controller:8088",
+      "cannot_do": "Agent logic execution or target modification",
+      "source_file": "surveyops/demo_ui/app.py"
+    },
+    {
+      "id": "controller",
+      "label": "Demo Controller",
+      "category": "software",
+      "zone": "controller_net",
+      "x": 540,
+      "y": 680,
+      "width": 180,
+      "height": 46,
+      "role": "Isolated fault injector & environment reset; named metrics queries",
+      "framework": "FastAPI / Python",
+      "can_access": "Toxiproxy:8474, Target Postgres:5432, Prometheus:9090",
+      "cannot_do": "Reachable only via controller_net with shared secret; no arbitrary PromQL",
+      "source_file": "surveyops/controller/app.py"
+    },
+    {
+      "id": "external_github",
+      "label": "GitHub / Human Reviewer",
+      "category": "software",
+      "zone": "external",
+      "x": 820,
+      "y": 680,
+      "width": 210,
+      "height": 46,
+      "role": "Receives Remediation Pull Request; Human merges after CI verification",
+      "framework": "GitHub API v3",
+      "can_access": "Pull request review UI",
+      "cannot_do": "No autonomous PR merge allowed",
+      "source_file": "eval/ground_truth/"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-load-orders",
+      "from": "load_generator",
+      "to": "orders",
+      "protocol": "HTTP",
+      "label": "HTTP Checkout"
+    },
+    {
+      "id": "edge-orders-payment",
+      "from": "orders",
+      "to": "payment",
+      "protocol": "HTTP",
+      "label": "HTTP /payment/charge"
+    },
+    {
+      "id": "edge-orders-inventory",
+      "from": "orders",
+      "to": "inventory",
+      "protocol": "HTTP",
+      "label": "HTTP /reserve"
+    },
+    {
+      "id": "edge-orders-auth",
+      "from": "orders",
+      "to": "auth",
+      "protocol": "HTTP",
+      "label": "HTTP /verify"
+    },
+    {
+      "id": "edge-payment-toxiproxy",
+      "from": "payment",
+      "to": "toxiproxy",
+      "protocol": "TCP",
+      "label": "TCP:5433"
+    },
+    {
+      "id": "edge-toxiproxy-postgres",
+      "from": "toxiproxy",
+      "to": "target_postgres",
+      "protocol": "TCP",
+      "label": "TCP:5432"
+    },
+    {
+      "id": "edge-prometheus-alertmanager",
+      "from": "prometheus",
+      "to": "alertmanager",
+      "protocol": "HTTP",
+      "label": "Alert Firing"
+    },
+    {
+      "id": "edge-alertmanager-api",
+      "from": "alertmanager",
+      "to": "surveyops_api",
+      "protocol": "webhook",
+      "label": "Webhook /investigate"
+    },
+    {
+      "id": "edge-api-surfacemapper",
+      "from": "surveyops_api",
+      "to": "surface_mapper",
+      "protocol": "A2A",
+      "label": "Trigger Static Analysis"
+    },
+    {
+      "id": "edge-api-diagnostician",
+      "from": "surveyops_api",
+      "to": "diagnostician",
+      "protocol": "A2A",
+      "label": "Trigger Loop"
+    },
+    {
+      "id": "edge-diagnostician-runner",
+      "from": "diagnostician",
+      "to": "runner",
+      "protocol": "A2A",
+      "label": "A2A Experiment Request"
+    },
+    {
+      "id": "edge-runner-target",
+      "from": "runner",
+      "to": "prometheus",
+      "protocol": "MCP",
+      "label": "MCP Read Metrics/Logs"
+    },
+    {
+      "id": "edge-diagnostician-remediator",
+      "from": "diagnostician",
+      "to": "remediator",
+      "protocol": "A2A",
+      "label": "A2A Diagnosis Handoff"
+    },
+    {
+      "id": "edge-remediator-github",
+      "from": "remediator",
+      "to": "external_github",
+      "protocol": "MCP",
+      "label": "MCP Open PR"
+    },
+    {
+      "id": "edge-demoui-controller",
+      "from": "demo_ui",
+      "to": "controller",
+      "protocol": "HTTP",
+      "label": "HTTP Secret /inject /reset"
+    },
+    {
+      "id": "edge-controller-toxi",
+      "from": "controller",
+      "to": "toxiproxy",
+      "protocol": "HTTP",
+      "label": "HTTP:8474 Inject Toxic"
+    }
+  ],
+  "forbidden_edges": [
+    {
+      "id": "forbidden-diag-target",
+      "from": "diagnostician",
+      "to": "payment",
+      "label": "Diagnostician cannot execute on live targets"
+    },
+    {
+      "id": "forbidden-runner-interpret",
+      "from": "runner",
+      "to": "diagnostician",
+      "label": "Runner cannot interpret causes (raw data only)"
+    },
+    {
+      "id": "forbidden-mapper-runtime",
+      "from": "surface_mapper",
+      "to": "prometheus",
+      "label": "Surface Mapper cannot see runtime metrics/logs"
+    },
+    {
+      "id": "forbidden-agents-toxiproxy",
+      "from": "runner",
+      "to": "toxiproxy",
+      "label": "Agents cannot reach Toxiproxy port 8474"
+    },
+    {
+      "id": "forbidden-remediator-merge",
+      "from": "remediator",
+      "to": "external_github",
+      "label": "Remediator cannot merge PR (Human must merge)"
+    }
+  ]
+}
