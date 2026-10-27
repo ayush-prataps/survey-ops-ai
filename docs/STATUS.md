@@ -206,6 +206,22 @@ Last updated: 2026-10-19
   - Pinned `litellm==1.105.1` and `mcp==1.28.1`, installed Remediator test dependencies, added `git clean -fd` to avoid untracked test accumulation.
   - Test suite expanded to 180 tests (`pytest tests/` passing 100%).
 
+- Step 11 completed (Live-Log Demo UI, Demo Mode Override, Service Health Checks):
+  - Demo UI converted to single full-width live-log view; removed SVG architecture map and node inspector.
+  - Added plain-English event summaries to events (`summary=` in `record_event`), expandable event details, and step progression strip (`Alert` -> `Investigate` -> `Diagnose` -> `Fix` -> `PR` -> `Report`).
+  - Implemented 10-service health row via read-only controller `/health/services` and demo proxy `/demo/health` (orders, payment, inventory, auth, target-postgres, prometheus, alertmanager, surveyops-api, runner, remediator; all 10 verified healthy).
+  - Configured demo mode compose override (`infra/docker-compose.demo.yml`) with 5s scrape, 15s alert `for:`, 30s rate window, and loadgen limited to `POST /payment/charge`. Measured 27.5s from Inject to alert firing.
+  - Replay system plays once, includes pause/speed controls, labeled `REPLAY`, and loops strictly on toggle.
+  - Propagated investigation failure reasons to `dedup_store.record_failure()` and surfaced in UI banner. Removed unused `crewai` import in `renderer.py`.
+  - Test suite expanded to 182 tests (`pytest tests/` passing 100%).
+- Step 6m completed (Live Demo End-to-End Chain Verified):
+  - Fixed API container credential propagation via `infra/.env` symlink.
+  - Sized demo load generator to 6 concurrent users (`LOCUST_USERS: 6`, 0.5-1.5s wait) saturating the 5-connection pool (`pool_utilization_ratio >= 0.80`), eliminating false early-abstains under active toxic without changing `check_system_healthy`.
+  - Installed missing target repository dependencies (`sqlalchemy`, `psycopg[binary]`, `prometheus-fastapi-instrumentator`) in Remediator image, enabling regression pytest passes.
+  - Extended Diagnostician A2A client timeout to 180s.
+  - Executed 3 end-to-end live runs: 3/3 diagnosed `connection_pool_exhaustion` (0 abstains), 2 opened and closed GitHub PRs with remote branch deletion, and generated deterministic incident reports.
+  - All 182 tests pass (`pytest tests/`).
+
 ## In progress
 - None
 

@@ -84,6 +84,7 @@ class IncidentDedupStore:
         self._lock = Lock()
         self._open_incidents: dict[tuple[str, str], str] = {}
         self._incidents: dict[str, dict] = {}
+        self._last_error: str | None = None
         self.expiry_seconds = expiry_seconds
 
     def _purge_expired(self, now: datetime) -> None:
@@ -176,11 +177,23 @@ class IncidentDedupStore:
             self._purge_expired(now)
             return [self._incidents[inc_id] for inc_id in self._open_incidents.values()]
 
+    def record_failure(self, incident_id: str, error: str) -> None:
+        with self._lock:
+            self._last_error = error
+            if incident_id in self._incidents:
+                self._incidents[incident_id]["status"] = "failed"
+                self._incidents[incident_id]["error"] = error
+
+    def get_last_error(self) -> str | None:
+        with self._lock:
+            return self._last_error
+
     def clear(self) -> None:
         """Clear all active and historical incidents (for test/trial reset)."""
         with self._lock:
             self._open_incidents.clear()
             self._incidents.clear()
+            self._last_error = None
 
 
 dedup_store = IncidentDedupStore()
@@ -279,7 +292,10 @@ def get_open_incidents(
     authorization: str | None = Header(default=None),
 ) -> dict:
     _verify_auth(x_shared_secret, authorization)
-    return {"open_incidents": dedup_store.list_open()}
+    return {
+        "open_incidents": dedup_store.list_open(),
+        "last_error": dedup_store.get_last_error(),
+    }
 
 
 class CloseIncidentRequest(BaseModel):
@@ -366,6 +382,15 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
         )
         try:
             from surveyops.events import record_event
+            outcome_label = diagnosis.outcome.value
+            rc = diagnosis.root_cause or "unknown"
+            conf = f"{diagnosis.confidence:.0%}" if diagnosis.confidence else ""
+            if outcome_label == "root_cause":
+                summary = f"Diagnostician concluded: {rc} ({conf} confidence) in {diagnosis.iterations_used} iterations"
+            elif outcome_label == "abstained":
+                summary = f"Diagnostician abstained after {diagnosis.iterations_used} iterations — insufficient evidence"
+            else:
+                summary = f"Diagnostician finished: {outcome_label} in {diagnosis.iterations_used} iterations"
             record_event(
                 incident_id,
                 "api",
@@ -377,6 +402,7 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
                     "iterations_used": diagnosis.iterations_used,
                     "duration_seconds": diag_dur,
                 },
+                summary=summary,
             )
         except Exception:
             pass
@@ -421,11 +447,17 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
         )
         try:
             from surveyops.events import record_event
+            error_reason = str(exc)
+            # Truncate for display; strip internal class prefixes
+            if ": " in error_reason:
+                error_reason = error_reason.split(": ", 1)[-1]
+            dedup_store.record_failure(incident_id, error_reason)
             record_event(
                 incident_id,
                 "api",
                 "investigation_failed",
-                {"error": str(exc)},
+                {"error": str(exc), "error_reason": error_reason},
+                summary=f"Investigation failed: {error_reason[:160]}",
             )
         except Exception:
             pass
@@ -549,6 +581,7 @@ async def investigate(
                     "threshold": validated.threshold,
                     "window_start": validated.window_start.isoformat(),
                 },
+                summary=f"Alert received: {validated.alert} on {validated.endpoint} — starting investigation",
             )
         except Exception:
             pass

@@ -131,9 +131,15 @@ class TestDemoUIEndpointsAndGroundTruthMasking:
         assert "text/html" in resp.headers["content-type"]
         assert "SURVEYOPS" in resp.text
         assert "Autonomous Multi-Agent" in resp.text
-        assert "btn-reveal" in resp.text
         assert "btn-inject" in resp.text
-        assert "arch-svg" in resp.text
+        assert "btn-reset" in resp.text
+        assert "btn-options" in resp.text
+        assert "health-row" in resp.text
+        assert "step-strip" in resp.text
+        assert "log-area" in resp.text
+        # Task 1: SVG map and node inspector removed
+        assert "arch-svg" not in resp.text
+        assert "node-inspector" not in resp.text
 
     def test_sse_event_stream_format(self):
         client = TestClient(demo_ui_app)
@@ -291,4 +297,30 @@ class TestDemoUIEndpointsAndGroundTruthMasking:
         with pytest.raises(RuntimeError) as exc_info:
             events.record_event("inc-fail-loud", "test", "test", {})
         assert "PostgreSQL events table unavailable in surveyops_postgres" in str(exc_info.value)
+
+    def test_health_endpoints_controller_and_demo_ui(self):
+        ctrl_client = TestClient(controller_app)
+        ctrl_resp = ctrl_client.get("/health/services")
+        assert ctrl_resp.status_code == 200
+        ctrl_data = ctrl_resp.json()
+        assert "services" in ctrl_data
+        assert isinstance(ctrl_data["services"], list)
+
+        ui_client = TestClient(demo_ui_app)
+        ui_resp = ui_client.get("/demo/health")
+        assert ui_resp.status_code == 200
+        ui_data = ui_resp.json()
+        assert "services" in ui_data
+
+    def test_event_summary_plain_english_storage(self):
+        inc_id = "inc-summary-test-99"
+        ev = record_event(
+            inc_id,
+            "api",
+            "incident_opened",
+            {"alert": "HighLatency", "endpoint": "/payment/charge"},
+            summary="Alert received: HighLatency on /payment/charge — starting investigation",
+        )
+        assert ev["payload"]["summary"] == "Alert received: HighLatency on /payment/charge — starting investigation"
+        assert ev["payload"]["alert"] == "HighLatency"
 

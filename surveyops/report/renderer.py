@@ -30,7 +30,6 @@ from surveyops.schemas import (
     Outcome,
     RemediationResult,
 )
-from surveyops.agents.remediator.workspace import redact_tokens
 
 logger = logging.getLogger("surveyops.report")
 

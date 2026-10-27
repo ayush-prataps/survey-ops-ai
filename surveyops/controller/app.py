@@ -6,6 +6,8 @@ Agents CANNOT reach this service or Toxiproxy.
 
 Endpoints:
 - GET  /health
+- GET  /health/services   (read-only, no auth: polls all 10 services)
+- GET  /incidents/open    (proxies surveyops-api, requires auth)
 - POST /inject (injects toxic on payment-postgres proxy)
 - POST /reset  (clears toxics on payment-postgres proxy & resets target tables)
 """
@@ -92,6 +94,70 @@ class InjectRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "controller"}
+
+
+@app.get("/health/services")
+async def health_services() -> dict[str, Any]:
+    """
+    Read-only endpoint (no auth). Returns green/red status and reason for each service.
+    Checks 10 services: orders, payment, inventory, auth, postgres, prometheus,
+    alertmanager, surveyops-api, runner, remediator.
+    """
+    checks: list[dict[str, Any]] = [
+        {"name": "orders",       "url": "http://orders:8001/health"},
+        {"name": "payment",      "url": "http://payment:8002/health"},
+        {"name": "inventory",    "url": "http://inventory:8003/health"},
+        {"name": "auth",         "url": "http://auth:8004/health"},
+        {"name": "runner",       "url": "http://runner:8005/health"},
+        {"name": "remediator",   "url": "http://remediator:8006/health"},
+        {"name": "surveyops-api","url": f"{SURVEYOPS_API_URL}/health"},
+        {"name": "prometheus",   "url": f"{PROMETHEUS_URL}/-/healthy"},
+        {"name": "alertmanager", "url": "http://alertmanager:9093/-/healthy"},
+    ]
+
+    results: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        for svc in checks:
+            try:
+                r = await client.get(svc["url"])
+                if r.status_code < 400:
+                    results.append({"name": svc["name"], "healthy": True, "reason": f"HTTP {r.status_code}"})
+                else:
+                    results.append({"name": svc["name"], "healthy": False, "reason": f"HTTP {r.status_code}"})
+            except Exception as exc:
+                results.append({"name": svc["name"], "healthy": False, "reason": str(exc)[:120]})
+
+    # Target Postgres: connect check
+    try:
+        conn = psycopg2.connect(
+            host=TARGET_PG_HOST, port=TARGET_PG_PORT,
+            user=TARGET_PG_USER, password=TARGET_PG_PASSWORD,
+            dbname=TARGET_PG_DB, connect_timeout=2,
+        )
+        conn.close()
+        results.append({"name": "target-postgres", "healthy": True, "reason": "connection ok"})
+    except Exception as exc:
+        results.append({"name": "target-postgres", "healthy": False, "reason": str(exc)[:120]})
+
+    return {"services": results}
+
+
+@app.get("/incidents/open")
+async def incidents_open(
+    x_shared_secret: Optional[str] = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
+) -> dict[str, Any]:
+    """Proxies /incidents/open from surveyops-api."""
+    _verify_auth(x_shared_secret, authorization)
+    try:
+        headers = {"X-Shared-Secret": SHARED_SECRET}
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{SURVEYOPS_API_URL}/incidents/open", headers=headers)
+            return r.json()
+    except Exception as exc:
+        return {"open_incidents": [], "error": str(exc)}
+
 
 
 @app.post("/inject")

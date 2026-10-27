@@ -1,14 +1,17 @@
 """
 SurveyOps Demo UI Service.
 FastAPI application serving:
-- GET  /                     -> Single-page HTML application (vanilla JS, no build step)
-- GET  /events/stream        -> SSE event stream from PostgreSQL events table / memory
-- GET  /incident/{id}        -> Incident summary, events, and reports (NO ground truth exposed)
-- POST /demo/inject          -> Proxies to controller service with shared secret
-- POST /demo/reset           -> Proxies to controller service with shared secret
-- POST /demo/reveal          -> Runs scorer in separate step and returns verdict only then
-- GET  /demo/replays         -> Lists available replay files in eval/replays/
-- POST /demo/replays/save    -> Saves incident events to eval/replays/<name>.json
+- GET  /                          -> Single-page HTML application (vanilla JS, no build step)
+- GET  /events/stream             -> SSE event stream from PostgreSQL events table
+- GET  /incident/{id}             -> Incident summary, events, and reports (NO ground truth exposed)
+- GET  /demo/health               -> Service health proxy (read-only, no auth)
+- GET  /demo/incidents/open       -> Open incidents proxy
+- GET  /demo/metrics              -> Strip metrics proxy
+- POST /demo/inject               -> Proxies to controller service with shared secret
+- POST /demo/reset                -> Proxies to controller service with shared secret
+- POST /demo/reveal               -> Runs scorer in separate step and returns verdict only then
+- GET  /demo/replays              -> Lists available replay files in eval/replays/
+- POST /demo/replays/save         -> Saves incident events to eval/replays/<name>.json
 - GET  /demo/replays/{name}/stream -> SSE stream of historical replay events with relative timing
 """
 
@@ -410,6 +413,40 @@ async def stream_replay(name: str, request: Request, fast: bool = Query(default=
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.get("/demo/health")
+async def get_demo_health() -> dict[str, Any]:
+    """
+    Read-only proxy to controller /health/services.
+    No shared secret needed (read-only public health check).
+    """
+    target_urls = [CONTROLLER_URL, "http://localhost:8088", "http://127.0.0.1:8088"]
+    for base_url in target_urls:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                resp = await client.get(f"{base_url}/health/services")
+                if resp.status_code == 200:
+                    return resp.json()
+        except httpx.RequestError:
+            continue
+    return {"services": [], "error": "controller unavailable"}
+
+
+@app.get("/demo/incidents/open")
+async def get_demo_incidents_open() -> dict[str, Any]:
+    """Proxies /incidents/open from controller (which proxies surveyops-api)."""
+    headers = {"X-Shared-Secret": SHARED_SECRET}
+    target_urls = [CONTROLLER_URL, "http://localhost:8088", "http://127.0.0.1:8088"]
+    for base_url in target_urls:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{base_url}/incidents/open", headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
+        except httpx.RequestError:
+            continue
+    return {"open_incidents": [], "error": "controller unavailable"}
 
 
 @app.get("/demo/metrics")

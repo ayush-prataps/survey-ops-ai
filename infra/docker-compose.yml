@@ -424,6 +424,8 @@ services:
     networks:
       - data_net
       - controller_net
+      - target_net
+      - ops_net
     depends_on:
       - toxiproxy
       - postgres

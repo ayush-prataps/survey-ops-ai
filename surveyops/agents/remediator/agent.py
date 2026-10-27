@@ -221,6 +221,17 @@ def run_remediation(
 
     target_repo = repo_dir or resolve_target_repo_dir()
     handler = callbacks or RemediatorCallbackHandler(incident_id=diagnosis.incident_id)
+    try:
+        from surveyops.events import record_event
+        record_event(
+            diagnosis.incident_id,
+            "remediator",
+            "remediation_started",
+            {"endpoint": diagnosis.endpoint, "root_cause": diagnosis.root_cause.value if diagnosis.root_cause else None},
+            summary="Remediator started localizing file and synthesizing patch",
+        )
+    except Exception:
+        pass
     should_use_mcp = (
         use_mcp
         if use_mcp is not None
@@ -345,6 +356,7 @@ def run_remediation(
                 "remediator",
                 "patch_applied",
                 {"target_file": proposal.target_file, "diff": proposal.diff, "explanation": proposal.explanation},
+                summary=f"Remediator patched {proposal.target_file}: {proposal.explanation[:120]}",
             )
         except Exception:
             pass
@@ -423,6 +435,7 @@ def run_remediation(
                 "target_file": proposal.target_file,
                 "regression_test_file": proposal.regression_test_file,
             },
+            summary=f"Pull request opened: {pr_res.pr_url}",
         )
     except Exception:
         pass

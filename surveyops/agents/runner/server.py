@@ -144,11 +144,13 @@ def create_runner_a2a_app(host: str = "0.0.0.0", port: int = 8005) -> FastAPI:
 
     @fastapi_app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        # Allow agent discovery and documentation endpoints
+        # Allow agent discovery, documentation, and health endpoints
         if request.method == "GET" and (
-            request.url.path in ("/.well-known/agent.json", "/.well-known/agent-card.json", "/docs", "/openapi.json")
+            request.url.path in ("/.well-known/agent.json", "/.well-known/agent-card.json", "/docs", "/openapi.json", "/health")
             or request.url.path.startswith("/.well-known/")
         ):
+            if request.url.path == "/health":
+                return JSONResponse({"status": "ok", "service": "runner"})
             return await call_next(request)
 
         # Require shared secret on all other requests (POST / JSON-RPC)

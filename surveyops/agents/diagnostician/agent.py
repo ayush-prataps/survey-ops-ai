@@ -760,7 +760,22 @@ class ExitDecisionAgent(BaseAgent):
     async def _send_to_remediator(self, diagnosis: DiagnosisResult) -> None:
         """Sends DiagnosisResult to Remediator over A2A, catching failures without crashing."""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            from surveyops.events import record_event
+            record_event(
+                diagnosis.incident_id,
+                "diagnostician",
+                "a2a_to_remediator",
+                {
+                    "remediator_url": self.remediator_url,
+                    "endpoint": diagnosis.endpoint,
+                    "root_cause": diagnosis.root_cause.value if diagnosis.root_cause else None,
+                },
+                summary=f"Sent DiagnosisResult to Remediator via A2A ({self.remediator_url})",
+            )
+        except Exception:
+            pass
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
                 payload = {
                     "jsonrpc": "2.0",
                     "id": f"rpc-rem-{uuid.uuid4().hex[:8]}",
@@ -786,7 +801,7 @@ class ExitDecisionAgent(BaseAgent):
                 else:
                     logger.warning(f"Remediator A2A returned HTTP {resp.status_code}")
         except Exception as exc:
-            logger.warning(f"Failed to communicate with Remediator over A2A (non-fatal): {exc}")
+            logger.warning(f"Failed to communicate with Remediator over A2A (non-fatal): {type(exc).__name__}: {exc}")
 
 
 # ── Instruction Callables for LlmAgents ──────────────────────────────────────

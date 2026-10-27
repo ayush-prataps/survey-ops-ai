@@ -162,3 +162,6 @@ websocket-client==1.9.2
 websockets==15.0.1
 yarl==1.25.1
 zipp==4.1.1
+prometheus-fastapi-instrumentator==7.0.2
+sqlalchemy==2.0.38
+psycopg[binary]==3.2.4

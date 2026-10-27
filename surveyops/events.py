@@ -104,13 +104,24 @@ def record_event(
     component: str,
     event_type: str,
     payload: dict[str, Any],
+    summary: str | None = None,
 ) -> dict[str, Any]:
     """
     Records an observability event for the demo UI.
     Sanitizes payload and writes to surveyops_postgres 'events' table.
     Fails loudly if Postgres is unavailable (unless SURVEYOPS_TEST_EVENTS_MEMORY=1).
+
+    Args:
+        incident_id: Incident identifier. Use "operator" for system-wide events.
+        component: Source component name (api, diagnostician, runner, remediator, etc.)
+        event_type: Machine-readable event type key.
+        payload: Structured event details. Redacted before storage.
+        summary: Optional plain-English one-line description for the live log UI.
+                 If provided, stored in payload["summary"]. Never used for logic.
     """
     global _EVENT_COUNTER
+    if summary is not None:
+        payload = {**payload, "summary": summary}
     sanitized_payload = redact_payload(payload or {})
     ts_str = datetime.now(timezone.utc).isoformat()
 

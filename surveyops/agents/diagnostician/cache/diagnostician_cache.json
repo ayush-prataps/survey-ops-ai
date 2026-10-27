@@ -262,5 +262,133 @@
       "completion_tokens": 824,
       "total_tokens": 2781
     }
+  },
+  "9c89399857ee2178c46ea9a9a7e222c3ab789c425638ebe69762f1f5d07949db": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
+    "usage": {
+      "prompt_tokens": 1866,
+      "completion_tokens": 662,
+      "total_tokens": 2528
+    }
+  },
+  "cb2063b6351c8ec0789e2ba6594bac545dcf7fa6efbefd0c96d79752c82d533f": {
+    "text": "I'll start by analyzing the incident. The alert is high P99 latency on `/payment/charge`. Two of the four hypotheses (SM-014, SM-016) point to connection pool exhaustion, which is a common cause of latency spikes. Pool gauges are a fast signal, so I'll test the leading pool-exhaustion hypothesis first.",
+    "usage": {
+      "prompt_tokens": 1960,
+      "completion_tokens": 890,
+      "total_tokens": 2850
+    }
+  },
+  "8f85415be93608e793a5207e0ab9d9658f7c517482f165fbc7cb87086b336832": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses (SM-014/SM-016), since pool gauges are a fast signal and two of four hypotheses point at the pool.",
+    "usage": {
+      "prompt_tokens": 1956,
+      "completion_tokens": 865,
+      "total_tokens": 2821
+    }
+  },
+  "d7616dfe80aede32d34c7e6b0d22d773d909eb3530e4c8a22a0c1478f33e8b61": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at the shared connection pool.",
+    "usage": {
+      "prompt_tokens": 1959,
+      "completion_tokens": 954,
+      "total_tokens": 2913
+    }
+  },
+  "2b75ab3443b17ea0b68984f54b920d286f27715fa9a00bd2a10c648efbdd5f6f": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
+    "usage": {
+      "prompt_tokens": 1865,
+      "completion_tokens": 659,
+      "total_tokens": 2524
+    }
+  },
+  "968cc14e59a6207c70448ee314f57bd384822049b0b5a4fa434cd657478274d7": {
+    "text": "Ledger update recorded successfully.\n\n**Summary of iteration 2 evaluation:**\n- **SM-014 (connection_pool_exhaustion, conf 0.72, active)** \u2014 disconfirming condition NOT met: `pool_utilization_ratio=1.0` and `pool_max_in_use=5.0 == pool_capacity=5.0` show saturation, not headroom. Caveat: `pool_in_use=2.0` at sample time is low.\n- **SM-016 (connection_pool_exhaustion, conf 0.58, active)** \u2014 same saturation evidence; not disconfirmed.\n- **SM-015 (missing_index_n_plus_1, conf 0.40, active)** \u2014 pool metrics don't address query-plan behavior; unchanged.\n- **SM-013 (race_condition_idempotency, conf 0.35, active)** \u2014 no error/duplicate-charge signals; unchanged.\n\n**Recommendation: continue** \u2014 the pool saturation signal supports the connection-exhaustion hypotheses, but the low instantaneous `pool_in_use` warrants a time-series check across the full latency window before concluding.",
+    "usage": {
+      "prompt_tokens": 4310,
+      "completion_tokens": 242,
+      "total_tokens": 4552
+    }
+  },
+  "9599298921be365d30d130e4c9c64b58accd9ed7ad56845b1554a083b37c519d": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are a fast signal and two of the four hypotheses (SM-014, SM-016) point to pool exhaustion.",
+    "usage": {
+      "prompt_tokens": 1961,
+      "completion_tokens": 871,
+      "total_tokens": 2832
+    }
+  },
+  "ceca0cf9ffdc784b40a258e541bb40b8c37e6bcf483e4db137d2ecfdcd9d127a": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
+    "usage": {
+      "prompt_tokens": 1866,
+      "completion_tokens": 698,
+      "total_tokens": 2564
+    }
+  },
+  "46caa8c2ded9bdcf7af90eb9a9036d5947ccd99a44170efb7a86736b5ed8ef80": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
+    "usage": {
+      "prompt_tokens": 1865,
+      "completion_tokens": 598,
+      "total_tokens": 2463
+    }
+  },
+  "a4eeea731e1f43984cf50ac31e22d1c62743729ca1a3831b773db6bfaf59e522": {
+    "text": "I'll start by analyzing the incident. The alert is high P99 latency on `/payment/charge`. Two of the four hypotheses (SM-014, SM-016) point to connection pool exhaustion, which is a common cause of latency spikes. Pool gauges are a fast signal, so I'll test the leading pool-exhaustion hypothesis first.",
+    "usage": {
+      "prompt_tokens": 1962,
+      "completion_tokens": 879,
+      "total_tokens": 2841
+    }
+  },
+  "b2827a5ed5f9fa1b49b61e08db46ba030fa60a4ee38b22375c5f2b6ae2e724b1": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at the connection pool.",
+    "usage": {
+      "prompt_tokens": 1955,
+      "completion_tokens": 927,
+      "total_tokens": 2882
+    }
+  },
+  "3ce9c0a1ae3fbfe32754a25a5638bda17082d1df442d26e6d69198f2325bd8ff": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at pool exhaustion.",
+    "usage": {
+      "prompt_tokens": 1960,
+      "completion_tokens": 889,
+      "total_tokens": 2849
+    }
+  },
+  "bb35b11f4922dfee30cb5c3f0df59e3f899aca4c9c25350c68f848256715b1a4": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
+    "usage": {
+      "prompt_tokens": 1864,
+      "completion_tokens": 614,
+      "total_tokens": 2478
+    }
+  },
+  "a81eb1a7bc70da04eff275bfc95fe01494c42ed6a760f5f6216a28af2b0e09d1": {
+    "text": "I need to include `disconfirming_if` inside the chosen_experiment object as well.",
+    "usage": {
+      "prompt_tokens": 2582,
+      "completion_tokens": 663,
+      "total_tokens": 3245
+    }
+  },
+  "a9ef66ae6a0c37811d17746ed4fc63197981009e497156e8d316290c7f932183": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
+    "usage": {
+      "prompt_tokens": 1867,
+      "completion_tokens": 641,
+      "total_tokens": 2508
+    }
+  },
+  "33a7516cbea743622fbf646e5941e8166503d0e25a87c849b8981910ac2490a6": {
+    "text": "I'll start by analyzing the incident. The alert is high P99 latency on `/payment/charge`. Two hypotheses (SM-014, SM-016) point to connection pool exhaustion, which is a common cause of latency spikes. Pool gauges are fast signals, so I'll test the leading pool-exhaustion hypothesis first.",
+    "usage": {
+      "prompt_tokens": 1960,
+      "completion_tokens": 897,
+      "total_tokens": 2857
+    }
   }
 }

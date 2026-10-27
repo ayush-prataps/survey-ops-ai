@@ -1,0 +1,27 @@
+# Demo Mode Compose Override (off by default)
+# Usage:
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.demo.yml up -d
+#
+# Configured values:
+#   Prometheus scrape interval: 5s
+#   Evaluation interval: 5s
+#   Alert rule duration (for:): 15s
+#   Alert rule rate window: [30s]
+#   Load generator: strictly POST /payment/charge, 6 users (saturates 5-connection pool), 0.5-1.5s wait
+
+services:
+  prometheus:
+    volumes:
+      - ./prometheus/prometheus.demo.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.demo.yml:/etc/prometheus/alert_rules.yml:ro
+
+  loadgen:
+    environment:
+      LOCUST_HOST: http://payment:8002
+      LOCUST_USERS: 6
+      LOCUST_SPAWN_RATE: 2
+      LOCUST_MIN_WAIT: 0.5
+      LOCUST_MAX_WAIT: 1.5
+    command: ["locust", "-f", "/app/locustfile_demo.py", "--headless", "-H", "http://payment:8002", "-u", "6", "-r", "2"]
+    volumes:
+      - ./loadgen/locustfile_demo.py:/app/locustfile_demo.py:ro
