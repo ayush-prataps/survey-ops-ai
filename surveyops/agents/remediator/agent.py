@@ -22,6 +22,8 @@ from surveyops.agents.remediator.schemas import (
     LocalizationResult,
     PatchProposal,
     PatchResult,
+    PRResult,
+    RepoReadResult,
     TestRunResult,
 )
 from surveyops.agents.remediator.workspace import (
@@ -32,6 +34,7 @@ from surveyops.agents.remediator.indexer import index_repository
 from surveyops.agents.remediator.localization import localize_target_file
 from surveyops.agents.remediator.tools import (
     apply_patch,
+    execute_remediator_mcp_tool,
     github_open_pr,
     repo_read,
     run_tests,
@@ -47,6 +50,7 @@ logger = logging.getLogger("surveyops.remediator.agent")
 def build_remediator_agent(
     model: Optional[str] = None,
     api_key: Optional[str] = None,
+    tools: Optional[list] = None,
 ) -> Agent:
     """Builds the CrewAI Remediator agent using REMEDIATOR_MODEL env var."""
     model_name = model or os.getenv("REMEDIATOR_MODEL", "deepseek/deepseek-flash")
@@ -60,20 +64,25 @@ def build_remediator_agent(
 
     llm = LLM(model=model_name, api_key=key, temperature=0.1)
 
-    return Agent(
-        role="Principal Site Reliability and Systems Remediator",
-        goal=(
+    agent_kwargs: dict[str, Any] = {
+        "role": "Principal Site Reliability and Systems Remediator",
+        "goal": (
             "Synthesize minimal, production-grade code patches and deterministic pytest regression tests "
             "for verified root-cause failure modes in backend microservices."
         ),
-        backstory=(
+        "backstory": (
             "You are an elite staff SRE and software engineer specializing in distributed systems resilience. "
             "You write atomic, minimal code fixes with zero side effects. For every fix, you author a deterministic "
             "regression test that fails cleanly on unpatched code and passes cleanly after the patch is applied."
         ),
-        llm=llm,
-        verbose=False,
-    )
+        "llm": llm,
+        "verbose": False,
+    }
+    if tools:
+        agent_kwargs["tools"] = tools
+
+    return Agent(**agent_kwargs)
+
 
 
 def construct_patch_prompt(
@@ -189,6 +198,7 @@ def run_remediation(
     repo_dir: Optional[Path] = None,
     model: Optional[str] = None,
     callbacks: Optional[RemediatorCallbackHandler] = None,
+    use_mcp: bool = True,
 ) -> RemediationResult:
     """
     Executes the end-to-end remediation flow:
@@ -211,13 +221,50 @@ def run_remediation(
 
     target_repo = repo_dir or resolve_target_repo_dir()
     handler = callbacks or RemediatorCallbackHandler()
+    should_use_mcp = (
+        use_mcp
+        if use_mcp is not None
+        else os.getenv("REMEDIATOR_USE_MCP", "true").lower() in ("true", "1")
+    )
+
+    if should_use_mcp:
+        logger.info("Remediator executing all tools via MCP protocol (surveyops-remediator-tools ClientSession).")
+        def _exec_read(fpath: str) -> RepoReadResult:
+
+            res = execute_remediator_mcp_tool("repo_read", {"file_path": fpath, "repo_dir": str(target_repo)})
+            return RepoReadResult.model_validate(res)
+
+        def _exec_write_test(tpath: str, code: str) -> PatchResult:
+            res = execute_remediator_mcp_tool("write_test_file", {"test_file_path": tpath, "test_code": code, "repo_dir": str(target_repo)})
+            return PatchResult.model_validate(res)
+
+        def _exec_run_tests(test_file: Optional[str] = None) -> TestRunResult:
+            args: dict[str, Any] = {"repo_dir": str(target_repo)}
+            if test_file:
+                args["test_file"] = test_file
+            res = execute_remediator_mcp_tool("run_tests", args)
+            return TestRunResult.model_validate(res)
+
+        def _exec_patch(fpath: str, orig: str, repl: str) -> PatchResult:
+            res = execute_remediator_mcp_tool("apply_patch", {"file_path": fpath, "original_snippet": orig, "replacement_snippet": repl, "repo_dir": str(target_repo)})
+            return PatchResult.model_validate(res)
+
+        def _exec_pr(branch: str, t: str, b: str) -> PRResult:
+            res = execute_remediator_mcp_tool("github_open_pr", {"branch_name": branch, "title": t, "body": b, "repo_dir": str(target_repo)})
+            return PRResult.model_validate(res)
+    else:
+        _exec_read = lambda fpath: repo_read(target_repo, fpath)
+        _exec_write_test = lambda tpath, code: write_test_file(target_repo, tpath, code)
+        _exec_run_tests = lambda test_file=None: run_tests(target_repo, test_file=test_file)
+        _exec_patch = lambda fpath, orig, repl: apply_patch(target_repo, fpath, orig, repl)
+        _exec_pr = lambda branch, t, b: github_open_pr(target_repo, branch, t, b)
 
     # 2. Index repository and localize target file
     index_repository(target_repo)
     localization = localize_target_file(diagnosis, repo_dir=target_repo)
 
     # Read untrusted target file
-    read_res = repo_read(target_repo, localization.file_path)
+    read_res = _exec_read(localization.file_path)
 
     # Create fix branch
     rc_name = diagnosis.root_cause.value if diagnosis.root_cause else "incident"
@@ -248,10 +295,10 @@ def run_remediation(
 
     # 4. Enforce Regression Test Rule (Rule 5)
     # Step 4a: Write regression test to unpatched code
-    write_test_file(target_repo, proposal.regression_test_file, proposal.regression_test_code)
+    _exec_write_test(proposal.regression_test_file, proposal.regression_test_code)
 
     # Step 4b: Run regression test on unpatched code (MUST FAIL)
-    pre_run = run_tests(target_repo, test_file=proposal.regression_test_file)
+    pre_run = _exec_run_tests(test_file=proposal.regression_test_file)
     if pre_run.passed:
         logger.warning(
             f"Regression test passed on unpatched code! Rejecting test per Rule 5. Output: {pre_run.stdout}"
@@ -268,15 +315,14 @@ def run_remediation(
             ),
         )
         proposal = execute_with_json_retry(execute_crew_prompt, retry_prompt, PatchProposal, max_retries=1)
-        write_test_file(target_repo, proposal.regression_test_file, proposal.regression_test_code)
-        pre_run = run_tests(target_repo, test_file=proposal.regression_test_file)
+        _exec_write_test(proposal.regression_test_file, proposal.regression_test_code)
+        pre_run = _exec_run_tests(test_file=proposal.regression_test_file)
         if pre_run.passed:
             logger.error("Regression test passed both before and after on retry. Remediation failed.")
             return RemediationResult(pr_url=None, branch=branch_name, files_changed=[], tests_added=[])
 
     # Step 4c: Apply patch
-    patch_res = apply_patch(
-        target_repo,
+    patch_res = _exec_patch(
         proposal.target_file,
         proposal.original_snippet,
         proposal.replacement_snippet,
@@ -290,8 +336,7 @@ def run_remediation(
             error_feedback=f"Patch application failed: {patch_res.error}. Ensure original_snippet matches verbatim.",
         )
         proposal = execute_with_json_retry(execute_crew_prompt, retry_prompt, PatchProposal, max_retries=1)
-        patch_res = apply_patch(
-            target_repo,
+        patch_res = _exec_patch(
             proposal.target_file,
             proposal.original_snippet,
             proposal.replacement_snippet,
@@ -301,7 +346,7 @@ def run_remediation(
             return RemediationResult(pr_url=None, branch=branch_name, files_changed=[], tests_added=[])
 
     # Step 4d: Run regression test on patched code (MUST PASS)
-    post_run = run_tests(target_repo, test_file=proposal.regression_test_file)
+    post_run = _exec_run_tests(test_file=proposal.regression_test_file)
     if not post_run.passed:
         logger.warning(f"Regression test failed after patch! Output: {post_run.stdout}. Retrying once...")
         retry_prompt = construct_patch_prompt(
@@ -311,19 +356,18 @@ def run_remediation(
             error_feedback=f"Regression test failed after applying your patch:\n{post_run.stdout}\n{post_run.stderr}",
         )
         proposal = execute_with_json_retry(execute_crew_prompt, retry_prompt, PatchProposal, max_retries=1)
-        patch_res = apply_patch(
-            target_repo,
+        patch_res = _exec_patch(
             proposal.target_file,
             proposal.original_snippet,
             proposal.replacement_snippet,
         )
-        post_run = run_tests(target_repo, test_file=proposal.regression_test_file)
+        post_run = _exec_run_tests(test_file=proposal.regression_test_file)
         if not post_run.passed:
             logger.error(f"Regression test failed on retry after patch. Aborting.")
             return RemediationResult(pr_url=None, branch=branch_name, files_changed=[], tests_added=[])
 
     # 5. Run full test suite in target repository
-    full_suite = run_tests(target_repo)
+    full_suite = _exec_run_tests()
     if not full_suite.passed:
         logger.error(f"Full test suite failed after remediation: {full_suite.failed} tests failed. Aborting.")
         return RemediationResult(pr_url=None, branch=branch_name, files_changed=[], tests_added=[])
@@ -332,7 +376,7 @@ def run_remediation(
     title = f"fix({rc_name}): resolve {rc_name} on {diagnosis.endpoint}"
     body = format_pr_body(diagnosis, localization, proposal, pre_run, post_run)
 
-    pr_res = github_open_pr(target_repo, branch_name, title, body)
+    pr_res = _exec_pr(branch_name, title, body)
     if not pr_res.success:
         logger.error(f"Failed to open GitHub PR: {pr_res.error}")
         return RemediationResult(
@@ -351,3 +395,4 @@ def run_remediation(
         files_changed=[proposal.target_file],
         tests_added=[proposal.regression_test_file],
     )
+

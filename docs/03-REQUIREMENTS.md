@@ -3,7 +3,7 @@
 | # | Requirement | How we satisfy it | Where | Status |
 |---|---|---|---|---|
 | 1 | Context sharing and state updates | ADK session state holds incident, propositions, hypotheses, ledger, iteration. CrewAI task context passes Surface Mapper -> propositions and Remediator inputs. Postgres bridges frameworks. | `surveyops/agents/*`, 04-CONTRACTS.md | Not started |
-| 2 | 2+ external tools via MCP | Custom MCP servers: Prometheus query, log fetch, load burst (Runner); GitHub PR, repo read (Remediator). | `surveyops/mcp_servers/` | Not started |
+| 2 | 2+ external tools via MCP | Custom MCP servers: Prometheus query, log fetch, load burst (Runner); GitHub PR, repo read, patch, test runner (Remediator). | `surveyops/mcp_servers/` | Complete |
 | 3 | Structured output via Pydantic | Models for Proposition, ExperimentRequest, Observation, LedgerEntry, DiagnosisResult, RemediationResult, IncidentReport. Reusable adapter in `surveyops/llm_utils.py`: tool-call mode for ADK (`submit_*` tools with Pydantic validation) and JSON mode for CrewAI (regex fence stripping, `model_validate_json`, 1-shot retry) ensuring provider portability across DeepSeek and Gemini. | `surveyops/schemas/`, `surveyops/llm_utils.py` | Complete |
 | 4 | Agentic design patterns | Reflection (challenge step), Tool Use, Planning (experiment selection), Multi-Agent orchestration, Loop with termination, Human-in-the-loop (PR review). | docs, agents | Designed |
 | 5 | Monitoring and logging via callbacks | ADK before/after agent, model, tool callbacks. CrewAI step_callback and task_callback. Structured JSON logs to Postgres. | `surveyops/callbacks/` | Not started |

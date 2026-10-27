@@ -6,15 +6,18 @@ failing test paths, untrusted comment prompt injection, and regression test rule
 
 from __future__ import annotations
 
-import tempfile
+import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import anyio
 import pytest
 from a2a.types import Message, Role, TextPart
 from a2a.utils import new_agent_text_message
 from a2a.server.agent_execution.context import RequestContext
 from a2a.server.events.event_queue import EventQueue
+from mcp import ClientSession
 
 from surveyops.schemas import (
     Outcome,
@@ -27,22 +30,27 @@ from surveyops.agents.remediator.schemas import (
     LocalizationResult,
     PatchProposal,
     PatchResult,
+    PRResult,
     TestRunResult,
 )
 from surveyops.agents.remediator.tools import (
     ForbiddenPathError,
     apply_patch,
     delimit_untrusted_content,
+    execute_remediator_mcp_tool,
     repo_read,
     validate_path_allowlist,
     write_test_file,
 )
+from surveyops.mcp_servers.remediator_server import remediator_mcp_server
+from surveyops.agents.remediator.crewai_tools import get_remediator_crewai_tools
 from surveyops.agents.remediator.localization import (
     extract_file_from_graph_edge,
     localize_target_file,
 )
 from surveyops.agents.remediator.server import RemediatorExecutor
 from surveyops.agents.remediator.agent import run_remediation
+
 
 
 @pytest.fixture
@@ -457,4 +465,157 @@ print("BEHAVIOR_CHECK_PASSED")
         res = subprocess.run([py_cmd, "-c", code], capture_output=True, text=True, check=False)
         assert res.returncode == 0, f"Subprocess failed: {res.stderr}"
         assert "BEHAVIOR_CHECK_PASSED" in res.stdout
+
+
+class TestRemediatorMCPTools:
+    """Tests the Remediator MCP server tools and execution via in-memory ClientSession."""
+
+    def test_mcp_tool_list_and_schemas(self):
+        """Verifies that remediator_mcp_server exposes the 5 vetted tools."""
+        async def _check():
+            c_send, s_recv = anyio.create_memory_object_stream(10)
+            s_send, c_recv = anyio.create_memory_object_stream(10)
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(
+                    remediator_mcp_server._mcp_server.run,
+                    s_recv,
+                    s_send,
+                    remediator_mcp_server._mcp_server.create_initialization_options(),
+                )
+                async with ClientSession(c_recv, c_send) as session:
+                    await session.initialize()
+                    tools = await session.list_tools()
+                    names = {t.name for t in tools.tools}
+                    assert names == {
+                        "repo_read",
+                        "apply_patch",
+                        "write_test_file",
+                        "run_tests",
+                        "github_open_pr",
+                    }
+                tg.cancel_scope.cancel()
+        anyio.run(_check)
+
+    def test_mcp_repo_read(self, dummy_repo: Path):
+        res = execute_remediator_mcp_tool("repo_read", {
+            "file_path": "payment/main.py",
+            "repo_dir": str(dummy_repo),
+        })
+        assert res["file_path"] == "payment/main.py"
+        assert res["line_count"] == 2
+        assert "<<<BEGIN UNTRUSTED SOURCE FILE: payment/main.py>>>" in res["untrusted_delimited"]
+
+    def test_mcp_apply_patch(self, dummy_repo: Path):
+        res = execute_remediator_mcp_tool("apply_patch", {
+            "file_path": "payment/main.py",
+            "original_snippet": "return {'status': 'ok'}",
+            "replacement_snippet": "return {'status': 'mcp_patched'}",
+            "repo_dir": str(dummy_repo),
+        })
+        assert res["success"] is True
+        assert res["syntax_valid"] is True
+        content = (dummy_repo / "payment" / "main.py").read_text()
+        assert "mcp_patched" in content
+
+    def test_mcp_write_test_file(self, dummy_repo: Path):
+        res = execute_remediator_mcp_tool("write_test_file", {
+            "test_file_path": "tests/test_mcp_regression.py",
+            "test_code": "def test_mcp():\n    assert True\n",
+            "repo_dir": str(dummy_repo),
+        })
+        assert res["success"] is True
+        assert res["syntax_valid"] is True
+        assert (dummy_repo / "tests" / "test_mcp_regression.py").exists()
+
+    def test_mcp_run_tests(self, dummy_repo: Path):
+        res = execute_remediator_mcp_tool("run_tests", {
+            "test_file": "tests/test_payment.py",
+            "repo_dir": str(dummy_repo),
+        })
+        assert "passed" in res
+        assert "total" in res
+        assert "duration_seconds" in res
+
+    def test_mcp_github_open_pr(self, dummy_repo: Path):
+        with patch("surveyops.agents.remediator.tools.commit_and_push_changes") as mock_push, \
+             patch("urllib.request.urlopen") as mock_urlopen:
+            mock_ctx = MagicMock()
+            mock_ctx.read.return_value = json.dumps({"html_url": "https://github.com/org/repo/pull/42", "number": 42}).encode("utf-8")
+            mock_urlopen.return_value.__enter__.return_value = mock_ctx
+
+            res = execute_remediator_mcp_tool("github_open_pr", {
+                "branch_name": "fix/test_branch",
+                "title": "fix: test PR",
+                "body": "PR description",
+                "repo_dir": str(dummy_repo),
+            })
+            assert res["success"] is True
+            assert res["pr_url"] == "https://github.com/org/repo/pull/42"
+            assert res["pr_number"] == 42
+            mock_push.assert_called_once()
+
+    def test_mcp_forbidden_path_error(self, dummy_repo: Path):
+        with pytest.raises(RuntimeError, match="Access to forbidden pattern"):
+            execute_remediator_mcp_tool("repo_read", {
+                "file_path": ".github/ci.yml",
+                "repo_dir": str(dummy_repo),
+            })
+
+    def test_crewai_tools_wrapping_mcp(self, dummy_repo: Path):
+        tools = get_remediator_crewai_tools()
+        assert len(tools) == 4
+        tool_names = {t.name for t in tools}
+        assert "repo_read" in tool_names
+        assert "apply_patch" in tool_names
+        assert "write_test_file" in tool_names
+        assert "run_tests" in tool_names
+
+    def test_run_remediation_with_mcp_dispatch(self, dummy_repo: Path):
+        diag = DiagnosisResult(
+            incident_id="inc-mcp-1",
+            outcome=Outcome.root_cause,
+            root_cause=FailureMode.connection_pool_exhaustion,
+            confidence=0.95,
+            endpoint="POST /payment/charge",
+            graph_edge_ref="POST /payment/charge -> DB payment",
+            iterations_used=2,
+        )
+        with patch("surveyops.agents.remediator.agent.index_repository"), \
+             patch("surveyops.agents.remediator.agent.localize_target_file", return_value=LocalizationResult(
+                 file_path="payment/main.py",
+                 signal_used="graph_edge_ref",
+                 semantic_score=0.9,
+             )), \
+             patch("surveyops.agents.remediator.agent.create_fix_branch"), \
+             patch("surveyops.agents.remediator.agent.execute_with_json_retry", return_value=PatchProposal(
+                 target_file="payment/main.py",
+                 explanation="Fix pool size via MCP",
+                 original_snippet="return {'status': 'ok'}",
+                 replacement_snippet="return {'status': 'mcp_fixed'}",
+                 regression_test_file="tests/test_mcp_flow.py",
+                 regression_test_code="def test_flow(): assert True",
+             )), \
+             patch("surveyops.mcp_servers.remediator_server.execute_run_tests") as mock_mcp_run_tests, \
+             patch("surveyops.mcp_servers.remediator_server.execute_github_open_pr") as mock_mcp_pr:
+
+            mock_mcp_run_tests.side_effect = [
+                TestRunResult(passed=False, total=1, failed=1, stdout="Fails before patch"),
+                TestRunResult(passed=True, total=1, failed=0, stdout="Passes after patch"),
+                TestRunResult(passed=True, total=10, failed=0, stdout="Full suite passes"),
+            ]
+            mock_mcp_pr.return_value = PRResult(
+                success=True,
+                pr_url="https://github.com/org/repo/pull/99",
+                pr_number=99,
+                branch="fix/mcp",
+            )
+
+            res = run_remediation(diag, repo_dir=dummy_repo, use_mcp=True)
+            assert res.pr_url == "https://github.com/org/repo/pull/99"
+            assert "payment/main.py" in res.files_changed
+            assert "tests/test_mcp_flow.py" in res.tests_added
+            assert mock_mcp_run_tests.call_count == 3
+            mock_mcp_pr.assert_called_once()
+
+
 
