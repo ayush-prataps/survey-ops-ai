@@ -1,0 +1,200 @@
+[
+  {
+    "id": 1,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:30.000Z",
+    "component": "api",
+    "event_type": "alert_received",
+    "payload": {
+      "alert": "HighP99Latency",
+      "service": "payment",
+      "endpoint": "/payment/charge",
+      "threshold": 1.0,
+      "severity": "critical"
+    }
+  },
+  {
+    "id": 2,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:31.200Z",
+    "component": "api",
+    "event_type": "incident_opened",
+    "payload": {
+      "alert": "HighP99Latency",
+      "service": "payment",
+      "endpoint": "/payment/charge",
+      "metric": "p99_latency",
+      "threshold": 1.0,
+      "window_start": "2026-10-27T01:23:25.000Z"
+    }
+  },
+  {
+    "id": 3,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:32.500Z",
+    "component": "guardrail",
+    "event_type": "guardrail_rejection",
+    "payload": {
+      "boundary": "falsification",
+      "reason": "Falsification test enforced: candidate hypothesis without negative condition rejected prior to dispatch",
+      "request_id": "req-probe-guardrail"
+    }
+  },
+  {
+    "id": 4,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:33.800Z",
+    "component": "runner",
+    "event_type": "observation_received",
+    "payload": {
+      "request_id": "req-inc-trial-1793044393-1",
+      "source": "prometheus",
+      "data": {
+        "pool_in_use": 5.0,
+        "pool_capacity": 5.0,
+        "pool_utilization_ratio": 1.0,
+        "pool_max_in_use": 5.0,
+        "p99_latency": 3.42
+      }
+    }
+  },
+  {
+    "id": 5,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:35.000Z",
+    "component": "diagnostician",
+    "event_type": "ledger_updated",
+    "payload": {
+      "iteration": 1,
+      "hypotheses": [
+        {
+          "hypothesis_id": "SM-014",
+          "failure_mode": "connection_pool_exhaustion",
+          "confidence": 0.78,
+          "status": "active",
+          "confidence_margin": 0.08
+        },
+        {
+          "hypothesis_id": "SM-016",
+          "failure_mode": "connection_pool_exhaustion",
+          "confidence": 0.70,
+          "status": "active",
+          "confidence_margin": 0.0
+        },
+        {
+          "hypothesis_id": "SM-015",
+          "failure_mode": "missing_index_n_plus_1",
+          "confidence": 0.45,
+          "status": "active",
+          "confidence_margin": 0.0
+        }
+      ],
+      "ledger_entries": [
+        {
+          "hypothesis_id": "SM-014",
+          "confidence": 0.78,
+          "disconfirming_if": "Pool utilization ratio stays low (e.g. < 0.5) with in_use well below capacity during latency window.",
+          "disconfirming_condition_met": false,
+          "disconfirming_justification": "pool_utilization_ratio=1.0 (>= 0.5) with pool_in_use=5.0 equal to capacity=5.0; disconfirming condition not met."
+        }
+      ]
+    }
+  },
+  {
+    "id": 6,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:36.500Z",
+    "component": "diagnostician",
+    "event_type": "ledger_updated",
+    "payload": {
+      "iteration": 2,
+      "hypotheses": [
+        {
+          "hypothesis_id": "SM-014",
+          "failure_mode": "connection_pool_exhaustion",
+          "confidence": 0.80,
+          "status": "leader",
+          "confidence_margin": 0.15
+        },
+        {
+          "hypothesis_id": "SM-016",
+          "failure_mode": "connection_pool_exhaustion",
+          "confidence": 0.65,
+          "status": "active",
+          "confidence_margin": 0.0
+        },
+        {
+          "hypothesis_id": "SM-015",
+          "failure_mode": "missing_index_n_plus_1",
+          "confidence": 0.20,
+          "status": "ruled_out",
+          "confidence_margin": 0.0
+        }
+      ],
+      "ledger_entries": [
+        {
+          "hypothesis_id": "SM-014",
+          "confidence": 0.80,
+          "disconfirming_if": "Pool utilization ratio stays low during latency window.",
+          "disconfirming_condition_met": false,
+          "disconfirming_justification": "Positive empirical proof verified: pool_utilization_ratio=1.0 >= 0.8 and QueuePool timeout confirmed."
+        }
+      ]
+    }
+  },
+  {
+    "id": 7,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:37.000Z",
+    "component": "diagnostician",
+    "event_type": "exit_decision",
+    "payload": {
+      "iteration": 2,
+      "should_exit": true,
+      "outcome": "root_cause",
+      "confidence": 0.80,
+      "reason": "Convergence stop: leader SM-014 (connection_pool_exhaustion) converged over 2 iterations with verified positive evidence."
+    }
+  },
+  {
+    "id": 8,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:23:42.000Z",
+    "component": "remediator",
+    "event_type": "patch_applied",
+    "payload": {
+      "target_file": "payment/main.py",
+      "diff": "@@ -25,2 +25,2 @@\n-    pool_size=5,\n-    max_overflow=0,\n+    pool_size=20,\n+    max_overflow=10,",
+      "explanation": "Increased QueuePool capacity from pool_size=5, max_overflow=0 to pool_size=20, max_overflow=10 to accommodate burst concurrency."
+    }
+  },
+  {
+    "id": 9,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:24:20.000Z",
+    "component": "remediator",
+    "event_type": "pr_opened",
+    "payload": {
+      "pr_url": "https://github.com/ayush-prataps/surveyops-target-app/pull/3",
+      "pr_number": 3,
+      "branch": "fix/connection_pool_exhaustion_1793044417",
+      "target_file": "payment/main.py",
+      "regression_test_file": "tests/test_connection_pool_exhaustion_regression.py"
+    }
+  },
+  {
+    "id": 10,
+    "incident_id": "inc-trial-1793044393",
+    "ts": "2026-10-27T01:24:21.000Z",
+    "component": "report",
+    "event_type": "report_generated",
+    "payload": {
+      "outcome": "root_cause",
+      "root_cause": "connection_pool_exhaustion",
+      "confidence": 0.80,
+      "pr_url": "https://github.com/ayush-prataps/surveyops-target-app/pull/3",
+      "total_tokens": 18548,
+      "duration_seconds": 142.91
+    }
+  }
+]

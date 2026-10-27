@@ -40,6 +40,12 @@ def _log_runner_event(event_type: str, data: dict[str, Any]) -> None:
     }
     entry.update(data)
     logger.info(json.dumps(entry))
+    try:
+        from surveyops.events import record_event
+        inc_id = str(data.get("incident_id") or data.get("request_id") or "runner")
+        record_event(inc_id, "runner", event_type, data)
+    except Exception:
+        pass
 
 
 # ── Allowlist & Defense-in-depth Caps ─────────────────────────────────────────

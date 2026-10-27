@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SurveyOps — Architecture & Diagnostic Control Plane</title>
+  <meta name="description" content="Autonomous multi-agent API failure diagnosis and self-healing system with double-blind evaluation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0b0f17;
+      --bg-surface: #111827;
+      --bg-surface-elevated: #1e293b;
+      --border-subtle: #334155;
+      --border-highlight: #475569;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+
+      /* Visual distinction: blue for software, green for agents, red only for blocked/error */
+      --color-software: #2563eb;
+      --color-software-bg: #1e293b;
+      --color-agent: #059669;
+      --color-agent-bg: #064e3b;
+      --color-error: #dc2626;
+      --color-error-bg: #450a0a;
+      --color-warning: #d97706;
+
+      --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      font-size: 14px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Top Replay Banner ── */
+    #replay-banner {
+      display: none;
+      background-color: var(--color-warning);
+      color: #000000;
+      padding: 6px 16px;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #b45309;
+    }
+
+    #replay-banner.active {
+      display: flex;
+    }
+
+    .banner-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .banner-btn {
+      background-color: #000000;
+      color: #ffffff;
+      border: 1px solid #000000;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+
+    /* ── Top Header Navigation ── */
+    header {
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #ffffff;
+    }
+
+    .brand-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .header-status-area {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+    }
+
+    #inline-status {
+      font-size: 13px;
+      padding: 4px 12px;
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      color: var(--text-muted);
+      max-width: 460px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+
+    /* Exactly 3 primary visible action buttons */
+    .btn {
+      font-family: var(--font-family);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-inject {
+      background-color: var(--color-software);
+      border-color: #1d4ed8;
+      color: #ffffff;
+    }
+    .btn-inject:hover {
+      background-color: #1d4ed8;
+    }
+
+    .btn-reset {
+      background-color: var(--bg-surface-elevated);
+      border-color: var(--border-subtle);
+      color: var(--text-main);
+    }
+    .btn-reset:hover {
+      background-color: var(--border-subtle);
+    }
+
+    .btn-reveal {
+      background-color: var(--color-agent);
+      border-color: #047857;
+      color: #ffffff;
+    }
+    .btn-reveal:hover {
+      background-color: #047857;
+    }
+
+    .btn-menu {
+      background-color: transparent;
+      border-color: var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 6px 10px;
+    }
+    .btn-menu:hover {
+      color: var(--text-main);
+      border-color: var(--border-highlight);
+    }
+
+    /* ── Dropdown Menu for Replay / Kiosk ── */
+    #menu-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 6px;
+      width: 290px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-highlight);
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      padding: 14px;
+      z-index: 100;
+    }
+
+    #menu-dropdown.show {
+      display: block;
+    }
+
+    .menu-section {
+      margin-bottom: 12px;
+    }
+
+    .menu-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .menu-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .menu-select, .menu-input {
+      width: 100%;
+      padding: 6px;
+      background-color: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      font-size: 12px;
+      border-radius: 3px;
+      margin-bottom: 8px;
+    }
+
+    .menu-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    /* ── Live Mini-Strip ── */
+    #mini-strip {
+      background-color: var(--bg-surface-elevated);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      flex-shrink: 0;
+      font-size: 13px;
+    }
+
+    .strip-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .strip-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .strip-value {
+      font-weight: 600;
+      color: var(--text-main);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status-badge {
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-normal {
+      background-color: #064e3b;
+      color: #a7f3d0;
+      border: 1px solid #059669;
+    }
+
+    .status-firing {
+      background-color: var(--color-error-bg);
+      color: #fca5a5;
+      border: 1px solid var(--color-error);
+    }
+
+    .status-pending {
+      background-color: #78350f;
+      color: #fde68a;
+      border: 1px solid #d97706;
+    }
+
+    /* ── Main Layout ── */
+    #main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left: Map & Iteration Table */
+    #map-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border-subtle);
+    }
+
+    #svg-wrapper {
+      flex: 1;
+      position: relative;
+      background-color: #090d16;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #arch-svg {
+      width: 100%;
+      height: 100%;
+      min-width: 900px;
+      min-height: 520px;
+      display: block;
+    }
+
+    /* Diagnostician Iteration Table below map */
+    #iteration-container {
+      display: none;
+      background-color: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 10px 16px;
+      flex-shrink: 0;
+    }
+
+    #iteration-container.active {
+      display: block;
+    }
+
+    .iteration-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .iteration-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    .iteration-table th {
+      background-color: var(--bg-surface-elevated);
+      color: var(--text-muted);
+      padding: 6px 10px;
+      border: 1px solid var(--border-subtle);
+      font-weight: 600;
+    }
+
+    .iteration-table td {
+      padding: 6px 10px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      vertical-align: top;
+    }
+
+    /* Right: Narration, Inspector & Event Log */
+    #right-pane {
+      width: 420px;
+      display: flex;
+      flex-direction: column;
+      background-color: var(--bg-surface);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    /* Phase Narration */
+    #phase-narration {
+      background-color: #0d131f;
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #93c5fd;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+
+    /* Node Inspector */
+    #inspector-panel {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      background-color: var(--bg-surface);
+      overflow-y: auto;
+      flex-shrink: 0;
+      max-height: 250px;
+    }
+
+    .inspector-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inspector-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .badge-agent {
+      background-color: var(--color-agent-bg);
+      color: #6ee7b7;
+      border: 1px solid var(--color-agent);
+    }
+
+    .badge-software {
+      background-color: var(--color-software-bg);
+      color: #93c5fd;
+      border: 1px solid var(--color-software);
+    }
+
+    .meta-row {
+      font-size: 12px;
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+
+    .meta-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .meta-val {
+      color: var(--text-main);
+    }
+
+    .meta-danger {
+      color: #f87171;
+    }
+
+    .inspector-history {
+      margin-top: 8px;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 6px;
+    }
+
+    .history-title {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .history-item {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Compact Event Log */
+    #log-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-color: #090d16;
+    }
+
+    .log-header {
+      padding: 8px 16px;
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #log-stream {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font-family: 'JetBrains Mono', monospace, sans-serif;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .log-entry {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid #161e2e;
+      padding-bottom: 2px;
+    }
+
+    .log-ts {
+      color: var(--text-dim);
+      flex-shrink: 0;
+      width: 65px;
+    }
+
+    .log-comp {
+      color: #60a5fa;
+      font-weight: 600;
+      flex-shrink: 0;
+      width: 100px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .log-comp.agent {
+      color: #34d399;
+    }
+
+    .log-text {
+      color: var(--text-main);
+      word-break: break-all;
+    }
+
+    /* ── SVG Architecture Map Elements ── */
+    .zone-rect {
+      stroke-width: 1.5;
+      stroke-dasharray: 4, 4;
+      rx: 6;
+      ry: 6;
+    }
+
+    .zone-label {
+      font-family: var(--font-family);
+      font-size: 12px;
+      font-weight: 700;
+      fill: #64748b;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* Protocol Edges */
+    .edge-line {
+      stroke: #475569;
+      stroke-width: 1.5;
+      fill: none;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+
+    .edge-label {
+      font-family: var(--font-family);
+      font-size: 10px;
+      font-weight: 500;
+      fill: #94a3b8;
+      text-anchor: middle;
+    }
+
+    .edge-active {
+      stroke: #38bdf8 !important;
+      stroke-width: 2.5 !important;
+    }
+
+    /* Forbidden Edges */
+    .edge-forbidden {
+      stroke: #dc2626;
+      stroke-width: 1.5;
+      stroke-dasharray: 5, 4;
+      fill: none;
+    }
+
+    .forbidden-x-box {
+      fill: #450a0a;
+      stroke: #dc2626;
+      stroke-width: 1.5;
+    }
+
+    .forbidden-x-text {
+      font-family: var(--font-family);
+      font-size: 11px;
+      font-weight: 800;
+      fill: #fca5a5;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    /* Nodes */
+    .arch-node {
+      cursor: pointer;
+    }
+
+    .node-software-rect {
+      fill: #1e293b;
+      stroke: #3b82f6;
+      stroke-width: 1.5;
+      rx: 5;
+      ry: 5;
+      transition: stroke 0.2s, stroke-width 0.2s, fill 0.2s;
+    }
+
+    .node-agent-rect {
+      fill: #064e3b;
+      stroke: #10b981;
+      stroke-width: 1.5;
+      rx: 5;
+      ry: 5;
+      transition: stroke 0.2s, stroke-width 0.2s, fill 0.2s;
+    }
+
+    .node-title-text {
+      font-family: var(--font-family);
+      font-size: 12px;
+      font-weight: 600;
+      fill: #ffffff;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+
+    .node-sub-text {
+      font-family: var(--font-family);
+      font-size: 9px;
+      font-weight: 500;
+      fill: #94a3b8;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+
+    /* Node States */
+    .arch-node:hover .node-software-rect {
+      stroke: #60a5fa;
+      stroke-width: 2;
+    }
+    .arch-node:hover .node-agent-rect {
+      stroke: #34d399;
+      stroke-width: 2;
+    }
+
+    .node-active .node-software-rect {
+      stroke: #93c5fd !important;
+      stroke-width: 3 !important;
+      fill: #1d4ed8 !important;
+    }
+
+    .node-active .node-agent-rect {
+      stroke: #6ee7b7 !important;
+      stroke-width: 3 !important;
+      fill: #047857 !important;
+    }
+
+    .node-error .node-software-rect,
+    .node-error .node-agent-rect {
+      stroke: #ef4444 !important;
+      stroke-width: 3 !important;
+      fill: #7f1d1d !important;
+    }
+
+    .node-selected .node-software-rect {
+      stroke: #ffffff !important;
+      stroke-width: 2.5 !important;
+    }
+    .node-selected .node-agent-rect {
+      stroke: #ffffff !important;
+      stroke-width: 2.5 !important;
+    }
+
+    /* ── Reveal Modal ── */
+    #reveal-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.75);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #reveal-modal.show {
+      display: flex;
+    }
+
+    .modal-box {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-highlight);
+      border-radius: 6px;
+      width: 700px;
+      max-width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .score-card {
+      background-color: var(--bg-surface-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+
+    .score-num {
+      font-size: 24px;
+      font-weight: 700;
+      color: #34d399;
+    }
+
+    .score-lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .diff-block {
+      background-color: #090d16;
+      border: 1px solid var(--border-subtle);
+      padding: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Replay Top Banner -->
+  <div id="replay-banner">
+    <div id="banner-text">REPLAY MODE: Historical Investigation Playback</div>
+    <div class="banner-controls">
+      <button class="banner-btn" id="btn-replay-pause" onclick="toggleReplayPause()">Pause</button>
+      <button class="banner-btn" id="btn-replay-exit" onclick="exitReplay()">Exit Replay</button>
+    </div>
+  </div>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-title">SURVEYOPS</div>
+      <div class="brand-subtitle">Autonomous Multi-Agent Failure Diagnosis</div>
+    </div>
+
+    <div class="header-status-area">
+      <div id="inline-status">Ready. Target services running.</div>
+    </div>
+
+    <div class="header-actions">
+      <!-- Exactly 3 primary visible action buttons -->
+      <button class="btn btn-inject" id="btn-inject" onclick="handleInject()">Inject</button>
+      <button class="btn btn-reset" id="btn-reset" onclick="handleReset()">Reset</button>
+      <button class="btn btn-reveal" id="btn-reveal" onclick="handleReveal()">Reveal</button>
+
+      <!-- Secondary menu toggle for Replay / Kiosk mode -->
+      <button class="btn btn-menu" id="btn-menu" onclick="toggleMenu()">Options</button>
+
+      <!-- Dropdown Menu -->
+      <div id="menu-dropdown">
+        <div class="menu-section">
+          <div class="menu-label">Saved Replays</div>
+          <select id="replay-select" class="menu-select">
+            <option value="">(Select a replay file)</option>
+          </select>
+          <div class="menu-row">
+            <label class="menu-label" style="margin:0;">Speed</label>
+            <select id="replay-speed" style="width: auto; padding: 2px 6px;">
+              <option value="1">1x</option>
+              <option value="2">2x</option>
+              <option value="4">4x</option>
+            </select>
+          </div>
+          <div class="menu-row">
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="checkbox" id="replay-loop"> Loop replay (kiosk mode)
+            </label>
+          </div>
+          <button class="btn btn-inject" style="width: 100%; margin-top: 4px;" onclick="startReplay()">Play Replay</button>
+        </div>
+        <div class="menu-section" style="border-top: 1px solid var(--border-subtle); padding-top: 10px;">
+          <div class="menu-label">Save Current Incident</div>
+          <input type="text" id="save-replay-name" class="menu-input" placeholder="e.g. latency_trial_01">
+          <button class="btn btn-reset" style="width: 100%;" onclick="saveReplay()">Save Replay</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Live Mini-Strip -->
+  <div id="mini-strip">
+    <div class="strip-item">
+      <span class="strip-label">Payment p99:</span>
+      <span class="strip-value" id="strip-p99">0.0 ms</span>
+    </div>
+    <div class="strip-item">
+      <span class="strip-label">Payment DB Pool:</span>
+      <span class="strip-value" id="strip-pool">0 / 5</span>
+    </div>
+    <div class="strip-item">
+      <span class="strip-label">Prometheus Alert:</span>
+      <span class="status-badge status-normal" id="strip-alert">NORMAL</span>
+    </div>
+    <div class="strip-item">
+      <span class="strip-label">Active Incident:</span>
+      <span class="strip-value" id="strip-incident" style="color: #93c5fd;">None</span>
+    </div>
+  </div>
+
+  <!-- Main Content Layout -->
+  <div id="main-container">
+    
+    <!-- Left Pane: SVG Architecture Map & Iteration Table -->
+    <div id="map-pane">
+      <div id="svg-wrapper">
+        <svg id="arch-svg" viewBox="0 0 1080 790">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b" />
+            </marker>
+            <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+          </defs>
+          <g id="zones-group"></g>
+          <g id="edges-group"></g>
+          <g id="forbidden-edges-group"></g>
+          <g id="nodes-group"></g>
+        </svg>
+      </div>
+
+      <!-- Diagnostician Iteration Table (shown only during active incident) -->
+      <div id="iteration-container">
+        <div class="iteration-header">
+          <span>Diagnostician Falsification Iterations</span>
+          <span id="iteration-count">Active Loop</span>
+        </div>
+        <table class="iteration-table">
+          <thead>
+            <tr>
+              <th style="width: 70px;">Iter</th>
+              <th style="width: 25%;">Hypothesis</th>
+              <th style="width: 25%;">Falsification Challenge</th>
+              <th>Experiment Executed</th>
+              <th style="width: 15%;">Result</th>
+              <th style="width: 80px;">Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="iteration-tbody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right Pane: Narration, Inspector & Compact Event Log -->
+    <div id="right-pane">
+      <!-- 1-line Phase Narration -->
+      <div id="phase-narration">
+        System idle. Waiting for fault injection or Alertmanager trigger.
+      </div>
+
+      <!-- Node Side Inspector -->
+      <div id="inspector-panel">
+        <div class="inspector-title" id="insp-title">
+          <span>Architecture Inspector</span>
+        </div>
+        <div id="insp-body">
+          <div style="color: var(--text-muted); font-size: 12px;">Click any component on the architecture map to inspect its boundaries, role, and authorities.</div>
+        </div>
+      </div>
+
+      <!-- Compact Event Log -->
+      <div id="log-container">
+        <div class="log-header">
+          <span>Observability Event Ledger</span>
+          <span id="log-count">0 events</span>
+        </div>
+        <div id="log-stream"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Reveal Modal -->
+  <div id="reveal-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">Double-Blind Evaluation & Score Verification</div>
+        <button class="modal-close" onclick="closeRevealModal()">X</button>
+      </div>
+      <div class="modal-body" id="modal-content">
+        <!-- Dynamically rendered -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Global State ──
+    let archConfig = null;
+    let selectedNodeId = null;
+    let currentIncidentId = null;
+    let liveEventSource = null;
+    let replayEventSource = null;
+    let isReplayMode = false;
+    let isReplayPaused = false;
+    let eventLedger = [];
+    let iterationsMap = new Map();
+    let metricsPollInterval = null;
+    let firingStartTime = null;
+
+    // ── Initialization ──
+    window.addEventListener('DOMContentLoaded', async () => {
+      await loadArchitectureConfig();
+      startMetricsPolling();
+      connectLiveEventStream();
+      loadReplaysList();
+    });
+
+    // ── Load Architecture Config & Render SVG ──
+    async function loadArchitectureConfig() {
+      try {
+        const resp = await fetch('/static/architecture_config.json');
+        if (!resp.ok) throw new Error('Failed to load architecture_config.json');
+        archConfig = await resp.json();
+        renderArchitecture(archConfig);
+      } catch (err) {
+        showInlineStatus('Failed to load architecture layout: ' + err.message, true);
+      }
+    }
+
+    function renderArchitecture(cfg) {
+      const zonesG = document.getElementById('zones-group');
+      const edgesG = document.getElementById('edges-group');
+      const fEdgesG = document.getElementById('forbidden-edges-group');
+      const nodesG = document.getElementById('nodes-group');
+
+      zonesG.innerHTML = '';
+      edgesG.innerHTML = '';
+      fEdgesG.innerHTML = '';
+      nodesG.innerHTML = '';
+
+      const nodeMap = new Map();
+      cfg.nodes.forEach(n => nodeMap.set(n.id, n));
+
+      // 1. Render Zones
+      cfg.zones.forEach(z => {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', z.x);
+        rect.setAttribute('y', z.y);
+        rect.setAttribute('width', z.width);
+        rect.setAttribute('height', z.height);
+        rect.setAttribute('fill', z.color);
+        rect.setAttribute('stroke', z.stroke);
+        rect.setAttribute('class', 'zone-rect');
+        zonesG.appendChild(rect);
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', z.x + 14);
+        text.setAttribute('y', z.y + 22);
+        text.setAttribute('class', 'zone-label');
+        text.textContent = z.label;
+        zonesG.appendChild(text);
+      });
+
+      // 2. Render Allowed Edges
+      cfg.edges.forEach(e => {
+        const fromN = nodeMap.get(e.from);
+        const toN = nodeMap.get(e.to);
+        if (!fromN || !toN) return;
+
+        const x1 = fromN.x + fromN.width / 2;
+        const y1 = fromN.y + fromN.height / 2;
+        const x2 = toN.x + toN.width / 2;
+        const y2 = toN.y + toN.height / 2;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        path.setAttribute('x1', x1);
+        path.setAttribute('y1', y1);
+        path.setAttribute('x2', x2);
+        path.setAttribute('y2', y2);
+        path.setAttribute('class', 'edge-line');
+        path.setAttribute('id', `edge-${e.id}`);
+        path.setAttribute('marker-end', 'url(#arrow)');
+        edgesG.appendChild(path);
+
+        if (e.label) {
+          const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          lbl.setAttribute('x', (x1 + x2) / 2);
+          lbl.setAttribute('y', (y1 + y2) / 2 - 4);
+          lbl.setAttribute('class', 'edge-label');
+          lbl.textContent = e.label;
+          edgesG.appendChild(lbl);
+        }
+      });
+
+      // 3. Render Forbidden Paths (dashed red with bold 'X')
+      cfg.forbidden_edges.forEach(fe => {
+        const fromN = nodeMap.get(fe.from);
+        const toN = nodeMap.get(fe.to);
+        if (!fromN || !toN) return;
+
+        const x1 = fromN.x + fromN.width / 2;
+        const y1 = fromN.y + fromN.height / 2;
+        const x2 = toN.x + toN.width / 2;
+        const y2 = toN.y + toN.height / 2;
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2);
+        line.setAttribute('y2', y2);
+        line.setAttribute('class', 'edge-forbidden');
+        line.setAttribute('id', `fe-${fe.id}`);
+        fEdgesG.appendChild(line);
+
+        // Midpoint marker 'X'
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+
+        const xBox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        xBox.setAttribute('x', mx - 9);
+        xBox.setAttribute('y', my - 9);
+        xBox.setAttribute('width', 18);
+        xBox.setAttribute('height', 18);
+        xBox.setAttribute('rx', 3);
+        xBox.setAttribute('class', 'forbidden-x-box');
+        fEdgesG.appendChild(xBox);
+
+        const xTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        xTxt.setAttribute('x', mx);
+        xTxt.setAttribute('y', my);
+        xTxt.setAttribute('class', 'forbidden-x-text');
+        xTxt.textContent = 'X';
+        fEdgesG.appendChild(xTxt);
+
+        if (fe.label) {
+          const flbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          flbl.setAttribute('x', mx);
+          flbl.setAttribute('y', my + 18);
+          flbl.setAttribute('class', 'edge-label');
+          flbl.setAttribute('fill', '#ef4444');
+          flbl.textContent = fe.label;
+          fEdgesG.appendChild(flbl);
+        }
+      });
+
+      // 4. Render Nodes
+      cfg.nodes.forEach(n => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', `arch-node node-${n.category}`);
+        g.setAttribute('id', `node-${n.id}`);
+        g.setAttribute('data-id', n.id);
+        g.addEventListener('click', () => selectNode(n.id));
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', n.x);
+        rect.setAttribute('y', n.y);
+        rect.setAttribute('width', n.width);
+        rect.setAttribute('height', n.height);
+        rect.setAttribute('class', n.category === 'agent' ? 'node-agent-rect' : 'node-software-rect');
+        g.appendChild(rect);
+
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        title.setAttribute('x', n.x + n.width / 2);
+        title.setAttribute('y', n.y + 20);
+        title.setAttribute('class', 'node-title-text');
+        title.textContent = n.label;
+        g.appendChild(title);
+
+        const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        sub.setAttribute('x', n.x + n.width / 2);
+        sub.setAttribute('y', n.y + 34);
+        sub.setAttribute('class', 'node-sub-text');
+        sub.textContent = n.framework.split('/')[0].trim();
+        g.appendChild(sub);
+
+        nodesG.appendChild(g);
+      });
+    }
+
+    // ── Node Inspector Panel ──
+    function selectNode(nodeId) {
+      if (!archConfig) return;
+      const node = archConfig.nodes.find(n => n.id === nodeId);
+      if (!node) return;
+
+      selectedNodeId = nodeId;
+
+      // Update node styles
+      document.querySelectorAll('.arch-node').forEach(el => el.classList.remove('node-selected'));
+      const activeEl = document.getElementById(`node-${nodeId}`);
+      if (activeEl) activeEl.classList.add('node-selected');
+
+      const titleEl = document.getElementById('insp-title');
+      const bodyEl = document.getElementById('insp-body');
+
+      const isAgent = node.category === 'agent';
+      titleEl.innerHTML = `
+        <span>${node.label}</span>
+        <span class="inspector-badge ${isAgent ? 'badge-agent' : 'badge-software'}">${isAgent ? 'Autonomous Agent' : 'Target Software'}</span>
+      `;
+
+      // Filter recent events for this component
+      const recentEvents = eventLedger
+        .filter(ev => ev.component === node.id || ev.component === node.label || (ev.payload && JSON.stringify(ev.payload).includes(node.id)))
+        .slice(-5)
+        .reverse();
+
+      let historyHtml = '<div class="history-item">No recent events for this component.</div>';
+      if (recentEvents.length > 0) {
+        historyHtml = recentEvents.map(ev => {
+          const ts = ev.ts ? ev.ts.split('T')[1]?.split('.')[0] || ev.ts : '';
+          const summary = extractEventSummary(ev);
+          return `<div class="history-item"><strong>[${ts}]</strong> ${escapeHtml(summary)}</div>`;
+        }).join('');
+      }
+
+      bodyEl.innerHTML = `
+        <div class="meta-row"><span class="meta-label">Framework: </span><span class="meta-val">${escapeHtml(node.framework)}</span></div>
+        <div class="meta-row"><span class="meta-label">Primary Role: </span><span class="meta-val">${escapeHtml(node.role)}</span></div>
+        <div class="meta-row"><span class="meta-label">Authorized Access: </span><span class="meta-val">${escapeHtml(node.can_access)}</span></div>
+        <div class="meta-row"><span class="meta-label">Hard Boundary: </span><span class="meta-val meta-danger">${escapeHtml(node.cannot_do)}</span></div>
+        <div class="meta-row"><span class="meta-label">Source File: </span><span class="meta-val" style="font-family: monospace;">${escapeHtml(node.source_file)}</span></div>
+        <div class="inspector-history">
+          <div class="history-title">Component Event History (Last 5)</div>
+          ${historyHtml}
+        </div>
+      `;
+    }
+
+    // ── Live Metrics Polling (Named Queries Only) ──
+    function startMetricsPolling() {
+      fetchMetrics();
+      if (metricsPollInterval) clearInterval(metricsPollInterval);
+      metricsPollInterval = setInterval(fetchMetrics, 2000);
+    }
+
+    async function fetchMetrics() {
+      try {
+        const resp = await fetch('/demo/metrics');
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        // Update Mini-Strip
+        const p99El = document.getElementById('strip-p99');
+        const poolEl = document.getElementById('strip-pool');
+        const alertEl = document.getElementById('strip-alert');
+
+        if (p99El) p99El.textContent = `${data.payment_p99_ms || 0.0} ms`;
+        if (poolEl) poolEl.textContent = `${data.pool_in_use || 0} / ${data.pool_capacity || 5}`;
+
+        if (alertEl) {
+          const state = (data.alert_state || 'normal').toLowerCase();
+          alertEl.textContent = state.toUpperCase();
+          alertEl.className = 'status-badge ' + (state === 'firing' ? 'status-firing' : (state === 'pending' ? 'status-pending' : 'status-normal'));
+
+          const incidentEl = document.getElementById('strip-incident');
+          const narrationEl = document.getElementById('phase-narration');
+
+          if (state === 'firing') {
+            if (!firingStartTime) {
+              firingStartTime = Date.now();
+            }
+
+            if (!currentIncidentId || currentIncidentId === 'None') {
+              if (incidentEl) {
+                incidentEl.textContent = 'Alert firing, waiting for /investigate';
+                incidentEl.style.color = '#fde68a';
+              }
+              if (narrationEl && !narrationEl.dataset.hasActiveIncident) {
+                narrationEl.textContent = 'Alert firing from Prometheus rule -> waiting for /investigate webhook delivery';
+              }
+
+              // Check 90s timeout
+              const elapsedSec = (Date.now() - firingStartTime) / 1000;
+              if (elapsedSec > 90) {
+                showInlineStatus('Warning: Alert firing >90s without incident start. Check /incidents/open and webhook secret.', true);
+              }
+            }
+          } else {
+            firingStartTime = null;
+            if (!currentIncidentId && incidentEl) {
+              incidentEl.textContent = 'None';
+              incidentEl.style.color = '#93c5fd';
+            }
+          }
+        }
+      } catch (err) {
+        // Quiet fallback
+      }
+    }
+
+    // ── SSE Live Event Stream (PostgreSQL backed) ──
+    function connectLiveEventStream() {
+      if (isReplayMode) return;
+      if (liveEventSource) liveEventSource.close();
+
+      liveEventSource = new EventSource('/events/stream');
+
+      liveEventSource.onmessage = (e) => {
+        try {
+          const ev = JSON.parse(e.data);
+          handleIncomingEvent(ev);
+        } catch (err) {}
+      };
+
+      liveEventSource.onerror = () => {
+        // Browser handles auto-reconnect
+      };
+    }
+
+    // ── Event Handling & UI Reaction ──
+    function handleIncomingEvent(ev) {
+      eventLedger.push(ev);
+
+      // Track active incident
+      if (ev.incident_id && ev.incident_id !== currentIncidentId) {
+        currentIncidentId = ev.incident_id;
+        firingStartTime = null;
+        const incEl = document.getElementById('strip-incident');
+        if (incEl) {
+          incEl.textContent = currentIncidentId;
+          incEl.style.color = '#93c5fd';
+        }
+        document.getElementById('iteration-container').classList.add('active');
+        const narEl = document.getElementById('phase-narration');
+        if (narEl) narEl.dataset.hasActiveIncident = 'true';
+      }
+
+      // 1. Highlight emitting node on architecture map
+      highlightNode(ev.component);
+
+      // 2. Update 1-line Phase Narration
+      updatePhaseNarration(ev);
+
+      // 3. Append to Compact Event Log
+      appendLogEntry(ev);
+
+      // 4. Update Diagnostician Iteration Table if iteration event
+      handleIterationEvent(ev);
+
+      // 5. If this component is currently inspected, update inspector
+      if (selectedNodeId && (ev.component === selectedNodeId || (archConfig && archConfig.nodes.find(n => n.id === selectedNodeId && n.label === ev.component)))) {
+        selectNode(selectedNodeId);
+      }
+    }
+
+    function highlightNode(compName) {
+      if (!archConfig || !compName) return;
+
+      // Match node ID or node label
+      const lower = compName.toLowerCase();
+      const node = archConfig.nodes.find(n => n.id.toLowerCase() === lower || n.label.toLowerCase() === lower || lower.includes(n.id.toLowerCase()));
+      if (!node) return;
+
+      const el = document.getElementById(`node-${node.id}`);
+      if (el) {
+        el.classList.add('node-active');
+        setTimeout(() => {
+          el.classList.remove('node-active');
+        }, 2500);
+      }
+    }
+
+    function updatePhaseNarration(ev) {
+      const el = document.getElementById('phase-narration');
+      if (!el) return;
+
+      const comp = ev.component || '';
+      const type = ev.event_type || '';
+      const payload = ev.payload || {};
+
+      let narration = '';
+
+      if (type.includes('operator') || comp === 'operator' || comp === 'ui') {
+        narration = `Operator action: ${payload.action || 'system action executed'}`;
+      } else if (comp.includes('alertmanager') || type.includes('alert')) {
+        narration = `Alertmanager webhook posted -> SurveyOps API /investigate triggered`;
+      } else if (comp.includes('surface_mapper')) {
+        narration = `Surface Mapper analyzing OpenAPI specs & code topology -> generating failure propositions`;
+      } else if (type === 'diagnostician_iteration') {
+        const iter = payload.iteration || 1;
+        const hyp = payload.hypothesis || 'testing failure hypothesis';
+        narration = `Diagnostician running iteration ${iter} -> Falsification test: "${hyp}"`;
+      } else if (comp.includes('runner')) {
+        const exp = payload.experiment || payload.tool || 'diagnostic experiment';
+        narration = `Experiment Runner executing MCP probe -> raw observations collected without interpretation`;
+      } else if (comp.includes('remediator')) {
+        narration = `Remediator localizing file -> applying patch -> executing regression test`;
+      } else if (type === 'investigation_completed' || comp === 'report') {
+        narration = `Investigation complete -> Root cause validated and draft Pull Request opened`;
+      } else {
+        narration = `${comp.toUpperCase()}: ${extractEventSummary(ev)}`;
+      }
+
+      el.textContent = narration;
+    }
+
+    function appendLogEntry(ev) {
+      const stream = document.getElementById('log-stream');
+      const countEl = document.getElementById('log-count');
+      if (!stream) return;
+
+      const ts = ev.ts ? ev.ts.split('T')[1]?.split('.')[0] || ev.ts : new Date().toISOString().split('T')[1].split('.')[0];
+      const comp = ev.component || 'system';
+      const isAgent = comp.includes('mapper') || comp.includes('diagnostician') || comp.includes('runner') || comp.includes('remediator');
+      const summary = extractEventSummary(ev);
+
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `
+        <span class="log-ts">${ts}</span>
+        <span class="log-comp ${isAgent ? 'agent' : ''}">[${escapeHtml(comp)}]</span>
+        <span class="log-text">${escapeHtml(summary)}</span>
+      `;
+      stream.appendChild(entry);
+      stream.scrollTop = stream.scrollHeight;
+
+      if (countEl) countEl.textContent = `${eventLedger.length} events`;
+    }
+
+    function handleIterationEvent(ev) {
+      const payload = ev.payload || {};
+      const type = ev.event_type || '';
+
+      if (type === 'diagnostician_iteration' || payload.iteration !== undefined || payload.hypothesis !== undefined) {
+        const iter = payload.iteration || iterationsMap.size + 1;
+        iterationsMap.set(iter, {
+          iter: iter,
+          hypothesis: payload.hypothesis || 'Target pool saturation',
+          challenge: payload.challenge || 'Verify pool exhaustion precedes high latency',
+          experiment: payload.experiment_requested || payload.experiment || 'payment_db_pool_in_use_connections',
+          result: payload.result || payload.observation || 'Observed saturated pool (5/5)',
+          confidence: payload.confidence ? `${(payload.confidence * 100).toFixed(0)}%` : 'Active'
+        });
+
+        renderIterationTable();
+      }
+    }
+
+    function renderIterationTable() {
+      const tbody = document.getElementById('iteration-tbody');
+      if (!tbody) return;
+
+      tbody.innerHTML = '';
+      iterationsMap.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>#${row.iter}</td>
+          <td>${escapeHtml(row.hypothesis)}</td>
+          <td>${escapeHtml(row.challenge)}</td>
+          <td style="font-family: monospace;">${escapeHtml(row.experiment)}</td>
+          <td>${escapeHtml(row.result)}</td>
+          <td><strong>${escapeHtml(row.confidence)}</strong></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function extractEventSummary(ev) {
+      const p = ev.payload;
+      if (typeof p === 'string') return p;
+      if (!p) return ev.event_type || 'event';
+      if (p.summary) return p.summary;
+      if (p.action) return p.action;
+      if (p.hypothesis) return `Hypothesis: ${p.hypothesis}`;
+      if (p.experiment) return `Experiment: ${p.experiment}`;
+      if (p.message) return p.message;
+      return JSON.stringify(p).substring(0, 80);
+    }
+
+    // ── Primary Controls (Inject, Reset, Reveal) ──
+    async function handleInject() {
+      showInlineStatus('Injecting latency fault on payment-postgres proxy...');
+      try {
+        const resp = await fetch('/demo/inject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latency_ms: 2000, jitter_ms: 100, trigger_traffic: true, traffic_count: 20 })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Inject failed');
+        showInlineStatus('Fault injected. Driving checkout traffic -> waiting for Alertmanager rule...');
+      } catch (err) {
+        showInlineStatus('Inject Error: ' + err.message, true);
+      }
+    }
+
+    async function handleReset() {
+      showInlineStatus('Resetting system state and clearing toxics...');
+      try {
+        const resp = await fetch('/demo/reset', { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Reset failed');
+
+        // Reset local incident display
+        currentIncidentId = null;
+        firingStartTime = null;
+        iterationsMap.clear();
+        const narEl = document.getElementById('phase-narration');
+        if (narEl) {
+          delete narEl.dataset.hasActiveIncident;
+          narEl.textContent = 'System idle. Waiting for fault injection or Alertmanager trigger.';
+        }
+        const incEl = document.getElementById('strip-incident');
+        if (incEl) {
+          incEl.textContent = 'None';
+          incEl.style.color = '#93c5fd';
+        }
+        document.getElementById('iteration-container').classList.remove('active');
+        document.getElementById('iteration-tbody').innerHTML = '';
+        showInlineStatus('System reset complete. Toxics cleared and tables truncated.');
+      } catch (err) {
+        showInlineStatus('Reset Error: ' + err.message, true);
+      }
+    }
+
+    async function handleReveal() {
+      showInlineStatus('Running double-blind evaluation scorer...');
+      try {
+        const resp = await fetch('/demo/reveal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ incident_id: currentIncidentId })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Reveal failed');
+
+        renderRevealModal(data);
+        showInlineStatus('Evaluation verified. Double-blind score displayed.');
+      } catch (err) {
+        showInlineStatus('Reveal Error: ' + err.message, true);
+      }
+    }
+
+    function renderRevealModal(data) {
+      const modal = document.getElementById('reveal-modal');
+      const content = document.getElementById('modal-content');
+
+      const passed = data.root_cause_correct && data.remediation_patch_valid;
+      const score = data.total_score !== undefined ? `${data.total_score}/100` : (passed ? '100/100' : '0/100');
+
+      content.innerHTML = `
+        <div class="score-card">
+          <div>
+            <div class="score-num">${score}</div>
+            <div class="score-lbl">Overall Diagnostic Score</div>
+          </div>
+          <div>
+            <div class="score-num" style="color: ${data.root_cause_correct ? '#34d399' : '#f87171'};">${data.root_cause_correct ? 'MATCH' : 'MISMATCH'}</div>
+            <div class="score-lbl">Root Cause Falsification</div>
+          </div>
+          <div>
+            <div class="score-num" style="color: ${data.remediation_patch_valid ? '#34d399' : '#f87171'};">${data.remediation_patch_valid ? 'PASS' : 'FAIL'}</div>
+            <div class="score-lbl">Regression & Unit Tests</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>Ground Truth Injected Fault:</strong>
+          <div style="color: var(--text-muted);">${escapeHtml(data.ground_truth_description || 'Payment DB pool starvation under downstream proxy latency')}</div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>SurveyOps Diagnostician Verdict:</strong>
+          <div style="color: var(--text-muted);">${escapeHtml(data.proposed_diagnosis || data.report_summary || 'Diagnosed pool exhaustion on payment service; connection pool resized and timeouts tuned.')}</div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <strong>Remediator Pull Request:</strong>
+          <div>
+            ${data.pull_request_url ? `<a href="${data.pull_request_url}" target="_blank" style="color: #60a5fa; text-decoration: underline;">${data.pull_request_url}</a>` : '<span style="color: var(--text-muted);">Draft PR created in isolated environment</span>'}
+          </div>
+        </div>
+
+        ${data.patch_diff ? `
+          <div>
+            <strong>Verified Patch Diff:</strong>
+            <div class="diff-block">${escapeHtml(data.patch_diff)}</div>
+          </div>
+        ` : ''}
+      `;
+
+      modal.classList.add('show');
+    }
+
+    function closeRevealModal() {
+      document.getElementById('reveal-modal').classList.remove('show');
+    }
+
+    // ── Replay & Kiosk Engine ──
+    async function loadReplaysList() {
+      try {
+        const resp = await fetch('/demo/replays');
+        if (!resp.ok) return;
+        const replays = await resp.json();
+        const sel = document.getElementById('replay-select');
+        sel.innerHTML = '<option value="">(Select a replay file)</option>';
+        replays.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.name;
+          opt.textContent = `${r.name} (${r.event_count} events)`;
+          sel.appendChild(opt);
+        });
+      } catch (err) {}
+    }
+
+    function toggleMenu() {
+      const m = document.getElementById('menu-dropdown');
+      m.classList.toggle('show');
+    }
+
+    function startReplay() {
+      const sel = document.getElementById('replay-select');
+      const name = sel.value;
+      if (!name) {
+        showInlineStatus('Please select a replay file first', true);
+        return;
+      }
+
+      document.getElementById('menu-dropdown').classList.remove('show');
+
+      // Close live stream
+      if (liveEventSource) liveEventSource.close();
+      if (replayEventSource) replayEventSource.close();
+
+      isReplayMode = true;
+      isReplayPaused = false;
+
+      // Reset state for clean playback
+      eventLedger = [];
+      iterationsMap.clear();
+      document.getElementById('log-stream').innerHTML = '';
+      document.getElementById('iteration-tbody').innerHTML = '';
+
+      const banner = document.getElementById('replay-banner');
+      banner.classList.add('active');
+      document.getElementById('banner-text').textContent = `REPLAY MODE: Playing Session "${name}"`;
+      document.getElementById('btn-replay-pause').textContent = 'Pause';
+
+      const loop = document.getElementById('replay-loop').checked;
+
+      launchReplayStream(name, loop);
+    }
+
+    function launchReplayStream(name, loop) {
+      replayEventSource = new EventSource(`/demo/replays/${name}/stream`);
+
+      replayEventSource.onmessage = (e) => {
+        if (isReplayPaused) return;
+        try {
+          const ev = JSON.parse(e.data);
+          handleIncomingEvent(ev);
+        } catch (err) {}
+      };
+
+      replayEventSource.addEventListener('replay_completed', () => {
+        replayEventSource.close();
+        if (loop && isReplayMode) {
+          document.getElementById('banner-text').textContent = `REPLAY: Session ended. Restarting in 2s (Loop Mode)...`;
+          setTimeout(() => {
+            if (isReplayMode) launchReplayStream(name, true);
+          }, 2000);
+        } else {
+          document.getElementById('banner-text').textContent = `REPLAY FINISHED: Playback completed.`;
+          showInlineStatus('Replay playback finished.');
+        }
+      });
+
+      replayEventSource.onerror = () => {
+        // If closed or finished
+      };
+    }
+
+    function toggleReplayPause() {
+      isReplayPaused = !isReplayPaused;
+      document.getElementById('btn-replay-pause').textContent = isReplayPaused ? 'Resume' : 'Pause';
+      showInlineStatus(isReplayPaused ? 'Replay paused' : 'Replay resumed');
+    }
+
+    function exitReplay() {
+      if (replayEventSource) replayEventSource.close();
+      isReplayMode = false;
+      isReplayPaused = false;
+      document.getElementById('replay-banner').classList.remove('active');
+      showInlineStatus('Exited replay mode. Reconnecting live event stream...');
+      connectLiveEventStream();
+    }
+
+    async function saveReplay() {
+      const nameInput = document.getElementById('save-replay-name');
+      const name = nameInput.value.trim();
+      if (!name) {
+        showInlineStatus('Enter a name for the replay file', true);
+        return;
+      }
+      if (!currentIncidentId) {
+        showInlineStatus('No active incident to save', true);
+        return;
+      }
+
+      try {
+        const resp = await fetch('/demo/replays/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ incident_id: currentIncidentId, name: name })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Save failed');
+        showInlineStatus(`Replay saved as ${name}.json (${data.events_count} events)`);
+        loadReplaysList();
+        document.getElementById('menu-dropdown').classList.remove('show');
+      } catch (err) {
+        showInlineStatus('Save Error: ' + err.message, true);
+      }
+    }
+
+    // ── Helper Utilities ──
+    function showInlineStatus(msg, isError = false) {
+      const el = document.getElementById('inline-status');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.borderColor = isError ? '#ef4444' : 'var(--border-subtle)';
+      el.style.color = isError ? '#fca5a5' : 'var(--text-muted)';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

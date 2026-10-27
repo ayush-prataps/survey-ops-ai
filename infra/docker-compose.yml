@@ -7,6 +7,8 @@ networks:
     driver: bridge
   ops_net:
     driver: bridge
+  controller_net:
+    driver: bridge
 
 volumes:
   target_postgres_data:
@@ -178,6 +180,7 @@ services:
       - "9090:9090"
     networks:
       - target_net
+      - data_net
     depends_on:
       - orders
       - payment
@@ -243,8 +246,8 @@ services:
   # ── SurveyOps API stub (/investigate endpoint) ─────────────────────────────
   surveyops-api:
     build:
-      context: ../surveyops/api
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: surveyops/api/Dockerfile
     container_name: surveyops_api
     restart: unless-stopped
     environment:
@@ -254,11 +257,17 @@ services:
       RUNNER_A2A_URL: http://runner:8005
       SURVEYOPS_POSTGRES_HOST: surveyops-postgres
       SURVEYOPS_POSTGRES_PORT: "5432"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DIAGNOSTICIAN_MODEL: ${DIAGNOSTICIAN_MODEL:-deepseek/deepseek-flash}
+    volumes:
+      - ../surveyops:/app/surveyops
     ports:
       - "8000:8000"
     networks:
       - target_net
       - ops_net
+      - controller_net
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
       interval: 5s
@@ -300,10 +309,15 @@ services:
       DOCKER_HOST: tcp://docker_log_proxy:2375
       MAX_LOAD_BURST_CONCURRENCY: ${MAX_LOAD_BURST_CONCURRENCY:-10}
       MAX_LOAD_BURST_SECONDS: ${MAX_LOAD_BURST_SECONDS:-10}
+      SURVEYOPS_POSTGRES_HOST: surveyops-postgres
+      SURVEYOPS_POSTGRES_PORT: "5432"
+    volumes:
+      - ../surveyops:/app/surveyops
     ports:
       - "8005:8005"
     networks:
       - target_net
+      - ops_net
     depends_on:
       - prometheus
       - orders
@@ -359,16 +373,21 @@ services:
       SURVEYOPS_POSTGRES_PORT: "5432"
       SURVEYOPS_POSTGRES_DB: ${SURVEYOPS_POSTGRES_DB:-surveyops}
       SURVEYOPS_POSTGRES_USER: ${SURVEYOPS_POSTGRES_USER:-postgres}
-      SURVEYOPS_POSTGRES_PASSWORD: ${SURVEYOPS_POSTGRES_PASSWORD:-postgres}
       REMEDIATOR_PORT: "8006"
       WORKSPACE_DIR: /workspace
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: target_app
+    volumes:
+      - ../surveyops:/app/surveyops
+      - remediator_workspace:/workspace
     ports:
       - "8006:8006"
     networks:
       - target_net
       - ops_net
-    volumes:
-      - remediator_workspace:/workspace
     depends_on:
       surveyops-postgres:
         condition: service_healthy
@@ -376,6 +395,75 @@ services:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8006/health\")'"]
       interval: 10s
       timeout: 5s
+      retries: 3
+
+  # ── SurveyOps Controller Service (Fault injection & system reset) ─────────
+  # ISOLATION: On data_net (to reach toxiproxy:8474 & target postgres:5432)
+  # AND controller_net (to talk with demo-ui).
+  # Agents DO NOT join controller_net or data_net, so agents cannot reach controller or toxiproxy.
+  controller:
+    build:
+      context: ..
+      dockerfile: surveyops/controller/Dockerfile
+    container_name: surveyops_controller
+    restart: unless-stopped
+    environment:
+      CONTROLLER_SHARED_SECRET: ${INVESTIGATE_SHARED_SECRET:-dev-secret}
+      TOXIPROXY_API: http://toxiproxy:8474
+      TARGET_POSTGRES_HOST: postgres
+      TARGET_POSTGRES_PORT: "5432"
+      TARGET_POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      TARGET_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TARGET_POSTGRES_DB: ${POSTGRES_DB:-target_app}
+      PROMETHEUS_URL: http://prometheus:9090
+      SURVEYOPS_API_URL: http://surveyops-api:8000
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes:
+      - ../surveyops:/app/surveyops
+    networks:
+      - data_net
+      - controller_net
+    depends_on:
+      - toxiproxy
+      - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8088/health\")'"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # ── SurveyOps Demo UI Service (FastAPI SSE & Dashboard) ───────────────────
+  # Joins ops_net (reaches surveyops-postgres:5432) AND controller_net (reaches controller:8088).
+  demo-ui:
+    build:
+      context: ..
+      dockerfile: surveyops/demo_ui/Dockerfile
+    container_name: surveyops_demo_ui
+    restart: unless-stopped
+    environment:
+      CONTROLLER_URL: http://controller:8088
+      CONTROLLER_SHARED_SECRET: ${INVESTIGATE_SHARED_SECRET:-dev-secret}
+      SURVEYOPS_POSTGRES_HOST: surveyops-postgres
+      SURVEYOPS_POSTGRES_PORT: "5432"
+      SURVEYOPS_POSTGRES_USER: ${SURVEYOPS_POSTGRES_USER:-postgres}
+      SURVEYOPS_POSTGRES_PASSWORD: ${SURVEYOPS_POSTGRES_PASSWORD:-postgres}
+      SURVEYOPS_POSTGRES_DB: ${SURVEYOPS_POSTGRES_DB:-surveyops}
+    volumes:
+      - ../surveyops:/app/surveyops
+      - ../eval:/app/eval
+    ports:
+      - "8050:8050"
+    networks:
+      - ops_net
+      - controller_net
+    depends_on:
+      - surveyops-postgres
+      - controller
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8050/health\")'"]
+      interval: 5s
+      timeout: 3s
       retries: 3
 
 

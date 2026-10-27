@@ -7,11 +7,16 @@ from .prometheus_tool import execute_prometheus_query
 from .docker_logs_tool import execute_fetch_logs
 from .load_burst_tool import execute_run_load_burst, execute_run_load_burst_async
 from .server import mcp_server
-from .remediator_server import (
-    remediator_mcp_server,
-    execute_remediator_mcp_tool,
-    _call_remediator_mcp_tool,
-)
+try:
+    from .remediator_server import (
+        remediator_mcp_server,
+        execute_remediator_mcp_tool,
+        _call_remediator_mcp_tool,
+    )
+except ImportError:
+    remediator_mcp_server = None
+    execute_remediator_mcp_tool = None
+    _call_remediator_mcp_tool = None
 
 __all__ = [
     "PrometheusQueryReturn",
