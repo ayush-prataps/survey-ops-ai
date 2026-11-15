@@ -37,6 +37,10 @@ def store_propositions(
     conn = psycopg2.connect(url)
     try:
         with conn.cursor() as cur:
+            try:
+                cur.execute("ALTER TABLE propositions ADD COLUMN IF NOT EXISTS checkable_signal JSONB;")
+            except Exception:
+                conn.rollback()
             query = """
             INSERT INTO propositions (
                 proposition_id,
@@ -92,6 +96,7 @@ def load_propositions(
     conn = psycopg2.connect(url)
     try:
         with conn.cursor() as cur:
+            cur.execute("ALTER TABLE propositions ADD COLUMN IF NOT EXISTS checkable_signal JSONB;")
             query = "SELECT proposition_id, endpoint, failure_mode, justification, predicted_signal, graph_edge_ref, checkable_signal FROM propositions"
             conditions = []
             params = []

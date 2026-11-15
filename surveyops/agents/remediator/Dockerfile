@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Install project dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy only surveyops directory (eval/ and credentials are strictly excluded)
 COPY surveyops /app/surveyops

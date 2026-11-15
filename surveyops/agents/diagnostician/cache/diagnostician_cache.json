@@ -263,372 +263,228 @@
       "total_tokens": 2781
     }
   },
-  "158a257cb7047319d6feff96c9d396079f615b06235fca4d6eebdb4da4c72f65": {
+  "b5cb0d499314b35b9b1be4353beba53e3feae2c3d770e4492dd4f87568691df9": {
     "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) using a fast pool gauge signal, which is quicker than p99 latency.",
     "usage": {
-      "prompt_tokens": 1797,
-      "completion_tokens": 633,
-      "total_tokens": 2430
+      "prompt_tokens": 1866,
+      "completion_tokens": 665,
+      "total_tokens": 2531
     }
   },
-  "ebca5519b84eb06037b4ad44bc6a9e3521ca3dcdda723e45097d5a0472321797": {
-    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, and add a rival hypothesis for comparison.",
+  "53a5d80f9e745995e90dd475b7ec1b14d57bab8a598c835c45122e504ce38f7c": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at `db.connection_pool`.",
     "usage": {
-      "prompt_tokens": 1673,
-      "completion_tokens": 547,
-      "total_tokens": 2220
+      "prompt_tokens": 1960,
+      "completion_tokens": 998,
+      "total_tokens": 2958
     }
   },
-  "9a92758684e0f9cfe19ee1d1ee73971588d19caf4282a6c07c8991f5e8ef5e38": {
-    "text": "I'll start by testing the leading hypothesis (SM-021) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
+  "6b726213cc6439a8f5fc68184b333ff552c27564be23dec1e18d01f22b8290d2": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, since pool metrics are quicker signals than p99 latency.",
+    "usage": {
+      "prompt_tokens": 2379,
+      "completion_tokens": 1322,
+      "total_tokens": 3701
+    }
+  },
+  "cf53b33a6e992411ba4b303752bbdf186b14a71e6f99620ab918b07a1898d617": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) using a fast pool gauge signal.",
     "usage": {
       "prompt_tokens": 1865,
-      "completion_tokens": 641,
-      "total_tokens": 2506
+      "completion_tokens": 665,
+      "total_tokens": 2530
     }
   },
-  "f1211b684c4a5f9db6b1ec594c313b1f44a8ef418130af90325170e484d7ee3e": {
-    "text": "I'll start by testing the connection pool hypothesis, since pool gauges are a fast signal and directly discriminate between the two candidates.",
+  "9a19fbac5cc758b1c163f35b2eae52a2ba8756abe4a4899defc577b29586f7fd": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at `db.connection_pool`.",
     "usage": {
-      "prompt_tokens": 1802,
-      "completion_tokens": 679,
-      "total_tokens": 2481
+      "prompt_tokens": 1962,
+      "completion_tokens": 1030,
+      "total_tokens": 2992
     }
   },
-  "f8e81abb2f6a33857fee1bac32d34d100ce272d8d1dc82525f271161a14b7472": {
-    "text": "The `disconfirming_if` field must be inside `chosen_experiment`. Let me retry.",
+  "e348699d7a1a75694830e86880365ba5bdb4eb95631c244ec7bf18fb32708c53": {
+    "text": "I'll start by testing the leading hypothesis. Since the alert is high p99 latency on /orders, and connection pool exhaustion (SM-001) is a strong candidate that would manifest as pool saturation, I'll query pool metrics first \u2014 a fast signal that can confirm or disconfirm pool exhaustion.",
     "usage": {
-      "prompt_tokens": 2603,
-      "completion_tokens": 686,
-      "total_tokens": 3289
+      "prompt_tokens": 2381,
+      "completion_tokens": 1347,
+      "total_tokens": 3728
     }
   },
-  "fb272891d2432c6717f5c4c7400dd405dcde2c2672719c9e1e8a65fb393aabe9": {
-    "text": "I'll analyze the situation. The previous experiment was rejected because the guardrail disallows querying the `health` service directly \u2014 only `auth`, `inventory`, `orders`, `payment` are allowed. Since the hypotheses reference `orders.health()`, `payment.health()`, and `inventory.health()` all using `db.connection_pool`, I should query the pool metrics on an allowed service.\n\nThe leading hypothesis is [SM-021] (orders.health() -> db.connection_pool). I'll test pool utilization on the `orders` service, which is allowed.",
+  "90676a6bec05dadf7f29645401adb5874f1241892bf2be8dbe5bc6459f09987f": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point to pool exhaustion. I'll query pool_in_use to check utilization.",
     "usage": {
-      "prompt_tokens": 2293,
-      "completion_tokens": 858,
-      "total_tokens": 3151
+      "prompt_tokens": 1957,
+      "completion_tokens": 827,
+      "total_tokens": 2784
     }
   },
-  "bf6123757a2050f1505c5dc5b1bd741904cc62057dd68dae37825f8ebb167aee": {
-    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, and add a rival hypothesis for upstream dependency failure given the p99 latency alert.",
+  "73add03c23e7211f1438a436d82fb371119a4ebf273b8634746093c5526bc162": {
+    "text": "I'll start by testing the leading hypothesis. Since all hypotheses are equally weighted at 0.50, I'll prioritize the connection pool exhaustion hypothesis (SM-001) as it's a common cause of high error rates on write endpoints and pool gauges are a fast signal.",
     "usage": {
-      "prompt_tokens": 1672,
-      "completion_tokens": 566,
-      "total_tokens": 2238
+      "prompt_tokens": 2375,
+      "completion_tokens": 1342,
+      "total_tokens": 3717
     }
   },
-  "537e35cda050ca100e5d9e0bba9ba695907f7684f9922e2991d68c0a545f4ca8": {
-    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
+  "c1e4412b41af579cbc68b3127d84a8f6593cda658bb6dc9bd7f92d57590bf1f5": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
     "usage": {
-      "prompt_tokens": 1881,
-      "completion_tokens": 761,
-      "total_tokens": 2642
+      "prompt_tokens": 1866,
+      "completion_tokens": 659,
+      "total_tokens": 2525
     }
   },
-  "45a48021b345555918b08a93ce2d8dcbe86cc22698d8942b9dad325e26f0439f": {
-    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, since pool metrics are quicker signals than p99 latency.",
+  "724f851bdb6f161782d36e585f7ba224e4bb576b596b12b82813c54bbddcfa75": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses (SM-014/SM-016), since pool gauges are fast signals and two of four hypotheses point to pool exhaustion.",
     "usage": {
-      "prompt_tokens": 1796,
-      "completion_tokens": 604,
-      "total_tokens": 2400
+      "prompt_tokens": 1961,
+      "completion_tokens": 836,
+      "total_tokens": 2797
     }
   },
-  "13eea57789dc65e92ed8b177ef696a290d89cad1f4f4c174cb412777ccd82e16": {
-    "text": "I'll start by prioritizing hypotheses. The alert is high p99 latency on POST /orders (create_order path). The create_order path involves synchronous downstream calls (auth, inventory, payment) and a DB connection pool. Pool gauges are fast signals, so I'll test connection_pool_exhaustion first as it's a common cause of latency on orchestration endpoints.",
+  "9743a17ba0639e996b247a0a26e37b5fff8637b54b92b58609d5ae2b412b020e": {
+    "text": "I'll start by testing the leading hypothesis. Since the alert is high p99 latency on /orders, and connection pool exhaustion (SM-001) is a common cause of latency spikes, I'll check pool utilization first \u2014 it's a fast signal.",
     "usage": {
-      "prompt_tokens": 2226,
-      "completion_tokens": 1159,
-      "total_tokens": 3385
+      "prompt_tokens": 2381,
+      "completion_tokens": 1316,
+      "total_tokens": 3697
     }
   },
-  "5b28faeb8ad9c5ff6a20edd72cbe0439d7c32a7009b9d324019b831e52e6871e": {
-    "text": "I'll start by testing the leading hypothesis. Since all three hypotheses are equally weighted (0.50), I'll prioritize the connection pool exhaustion hypothesis (SM-012), as pool gauges are fast, high-signal indicators that can quickly confirm or rule out resource saturation before investigating query-level issues.",
+  "9d1ce8b1c9412c4671a030b735edee1c68f73dcab860f1ffc1c8cf021bea9b48": {
+    "text": "Ledger update submitted successfully.\n\n**Summary of iteration 2/5 evaluation:**\n\n| Hypothesis | Disconfirming condition met? | Confidence | Status |\n|---|---|---|---|\n| SM-014 connection_pool_exhaustion | No \u2014 `pool_utilization_ratio=1.0`, `pool_max_in_use=5.0 == pool_capacity=5.0` | 0.72 | active |\n| SM-016 connection_pool_exhaustion | No \u2014 same saturation evidence | 0.68 | active |\n| SM-013 race_condition_idempotency | No \u2014 pool saturation neither confirms nor rules out | 0.45 | active |\n| SM-015 missing_index_n_plus_1 | No \u2014 no query-plan/index signal in this observation | 0.45 | active |\n\n**Recommendation: continue.** The pool metrics show saturation (max in-use hitting capacity), so connection pool exhaustion remains the leading candidate; no direct mechanism error messages were present in the logs. Next experiment should target query-level latency/plan data (to test SM-015) and duplicate-charge/idempotency-conflict signals (to test SM-013) to discriminate among the remaining active hypotheses.",
     "usage": {
-      "prompt_tokens": 1886,
-      "completion_tokens": 771,
-      "total_tokens": 2657
+      "prompt_tokens": 4417,
+      "completion_tokens": 249,
+      "total_tokens": 4666
     }
   },
-  "8dc9dad7cb42a8aa49059d8ff7eab787449bb83db08851a27ed9f4f7115ee1d4": {
-    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query, since pool metrics are quicker signals than p99 latency.",
+  "c818dc324de86d8a9024e3f70747279df7221344baa12d22a9a043e86cb6044d": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
     "usage": {
-      "prompt_tokens": 1794,
-      "completion_tokens": 627,
-      "total_tokens": 2421
+      "prompt_tokens": 1866,
+      "completion_tokens": 653,
+      "total_tokens": 2519
     }
   },
-  "565702049eddaab8c3a920bdca17ebd7a96614ff38cdd9c8ceced414a63b5a4f": {
-    "text": "I'll start by testing the leading hypothesis. Both hypotheses are equally weighted (0.50), but connection pool exhaustion is typically faster to confirm/deny via pool gauges than index issues via latency. I'll query pool metrics first.",
+  "8d5a9c4c324e4de583a911a4b3aeb84167acc64fbbe3ed40a24d4b5fc7bd9071": {
+    "text": "I'll start by testing the connection pool hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at pool exhaustion.",
     "usage": {
-      "prompt_tokens": 1796,
-      "completion_tokens": 635,
-      "total_tokens": 2431
+      "prompt_tokens": 1962,
+      "completion_tokens": 1009,
+      "total_tokens": 2971
     }
   },
-  "dbd606e973289b0baa05387d80c0c446f20e9ce9d78fe5bc93ef9f934333f634": {
-    "text": "I'll start by testing the leading hypotheses. Since pool gauges are fast signals, I'll query pool utilization to test connection_pool_exhaustion (SM-012), which is a common cause of high p99 latency on DB-heavy endpoints.",
+  "5f31f87f58cfe2b48dbdb160183447be4c0f174dc7f96da500291bbcc738f07d": {
+    "text": "I'll start by testing the leading hypothesis. Since the alert is high p99 latency on /orders, and connection pool exhaustion (SM-001) is a strong candidate that would cause latency across the create_order path, I'll query pool metrics first \u2014 pool gauges are fast signals.",
     "usage": {
-      "prompt_tokens": 1887,
-      "completion_tokens": 711,
-      "total_tokens": 2598
+      "prompt_tokens": 2381,
+      "completion_tokens": 1336,
+      "total_tokens": 3717
     }
   },
-  "931a9c8ca84c39351bf21d3c4b0c75dbb098ccc7616ce14f946c6a88a333e45e": {
-    "text": "I'll start by testing the leading hypothesis (SM-019, orders health \u2192 connection pool) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
-    "usage": {
-      "prompt_tokens": 1862,
-      "completion_tokens": 710,
-      "total_tokens": 2572
-    }
-  },
-  "f2ae3d3dca091dc4a01661088c28128938064b432bfd77537705d5b52e415089": {
-    "text": "I'll start by analyzing the incident. The alert is HighErrorRate on /orders. The leading candidates involve synchronous downstream dependencies (auth, inventory, payment) and connection pool exhaustion. Since pool gauges are fast signals, I'll test the connection pool exhaustion hypothesis first, as it can explain elevated error rates across the create_order path.",
-    "usage": {
-      "prompt_tokens": 2219,
-      "completion_tokens": 1144,
-      "total_tokens": 3363
-    }
-  },
-  "117637ccab04ccbfd0576e7fd325fbdfc76325e86405bf60c515121ff0423454": {
-    "text": "I'll start by testing the leading hypotheses. Since connection pool exhaustion (SM-012) and missing index (SM-013) both produce high error rates on a DB-heavy endpoint, the fastest discriminating signal is the pool gauge \u2014 it directly confirms or rules out pool exhaustion before we spend time on logs or latency.",
-    "usage": {
-      "prompt_tokens": 1884,
-      "completion_tokens": 907,
-      "total_tokens": 2791
-    }
-  },
-  "2d2ef0d0b221e3425d14d021a918ffb538c7d15f7ae12bd16ac5e2260b48714a": {
-    "text": "I'll start by testing the leading hypothesis. Since all three hypotheses are tied at 0.50, I'll prioritize SM-012 (connection_pool_exhaustion) as the leading candidate because pool gauges are fast, high-signal indicators and pool exhaustion is a common cause of p99 latency spikes on DB-heavy endpoints. A pool_in_use query will quickly confirm or rule it out.",
-    "usage": {
-      "prompt_tokens": 1888,
-      "completion_tokens": 811,
-      "total_tokens": 2699
-    }
-  },
-  "e8a1cd1c27f212880039be634644fcac7211b9bc54762753f808845bba615f2e": {
-    "text": "I'll start by testing the leading hypothesis (SM-019, orders health \u2192 connection pool) using a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
-    "usage": {
-      "prompt_tokens": 1863,
-      "completion_tokens": 657,
-      "total_tokens": 2520
-    }
-  },
-  "ced6357a749477a29cd872f1d378af81645f1440cf0ae09384c1016f651606d0": {
-    "text": "I'll start by testing the leading hypothesis. Since the alert is HighErrorRate on POST /orders, and the endpoint orchestrates synchronous downstream calls (auth, inventory, payment), an upstream dependency failure is a strong candidate. Pool gauges are a fast signal, so I'll check pool utilization first to rule out connection pool exhaustion (SM-005) as a competing explanation before diving into dependency-specific logs.",
-    "usage": {
-      "prompt_tokens": 2220,
-      "completion_tokens": 1178,
-      "total_tokens": 3398
-    }
-  },
-  "d620e8f5eeb8d3cf527205d421d56e5a09c0b6e991106e5d1f169bc3ffcdf108": {
+  "0e5c5c5e9aa06895a2f9c8ac6832d2ea4249ff43c82714293774bf0aa44d5997": {
     "text": "The `disconfirming_if` must be inside `chosen_experiment`. Retrying.",
     "usage": {
-      "prompt_tokens": 2617,
-      "completion_tokens": 627,
-      "total_tokens": 3244
+      "prompt_tokens": 3815,
+      "completion_tokens": 1357,
+      "total_tokens": 5172
     }
   },
-  "824627fee24f2e1a8c4062c216c8a4ef980a0f7c076fee9139f1222c0fb4724a": {
-    "text": "The top-level `disconfirming_if` is also required. Adding both.",
+  "1b03e39af47c0081cc089a7c593e3ddd49b8b8da87ecc51fa12234874f97b060": {
+    "text": "I'll analyze the situation and select an experiment that avoids the guardrail issue from iteration 1.\n\nKey insight: The previous attempt failed because it queried the `health` service, which is not in the allowed list `['auth', 'inventory', 'orders', 'payment']`. The alert is on the `health` endpoint, but the underlying hypotheses (SM-021/022/023) all point to `db.connection_pool` consumption via health checks on orders/payment/inventory. I should query pool metrics on one of the allowed services that shares the connection pool.",
     "usage": {
-      "prompt_tokens": 3308,
-      "completion_tokens": 689,
-      "total_tokens": 3997
+      "prompt_tokens": 2295,
+      "completion_tokens": 879,
+      "total_tokens": 3174
     }
   },
-  "380eb4ca5eeb13f8516d90844112efd239c2569139ee5b90e3759df2d6db59d6": {
-    "text": "I'll start by testing the leading hypotheses. Since connection pool exhaustion (SM-012) and missing index (SM-013) both produce high error rates under load, and pool gauges are the fastest signal, I'll query pool metrics first to discriminate between them.",
+  "b3eb145525eddce9d5d52d30c02fd3bab2b812ac8ac3bce527ea151ee2d4fa58": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point at the connection pool.",
     "usage": {
-      "prompt_tokens": 1883,
-      "completion_tokens": 712,
-      "total_tokens": 2595
+      "prompt_tokens": 1957,
+      "completion_tokens": 908,
+      "total_tokens": 2865
     }
   },
-  "562a9a78cc177e5efe2116bc5167f6e5a400f503596e80efe2b10b05964680b1": {
-    "text": "Ledger update recorded successfully.\n\n**Summary of iteration 2 evaluation (req-inc-b27b653a-1):**\n- **SM-012 (connection_pool_exhaustion)** \u2014 disconfirming condition **not met**: `pool_utilization_ratio=1.0` (\u22650.7) and `pool_max_in_use=5.0` equals `pool_capacity=5.0`, confirming the pool hit its ceiling. Confidence held at 0.60, status active. Caveat: instantaneous `pool_in_use=2.0` is low, so support is moderate rather than conclusive.\n- **SM-013 (missing_index_n_plus_1)** \u2014 disconfirming condition not met (ratio 1.0 \u2265 0.7), so the redirect toward SM-013 isn't triggered; confidence held at 0.45, active.\n- **SM-011 (race_condition_idempotency)** \u2014 disconfirming condition not met; confidence held at 0.50, active.\n\nNo direct mechanism error messages appeared in the logs. Recommendation: **continue** \u2014 next experiments should target idempotency-key duplicate detection (SM-011) and query latency/plan inspection (SM-013) to discriminate among the remaining active hypotheses.",
+  "668b62f02b478ed9f43ca09119875f53e38757edae71ba481f067ca5dde3c27d": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
     "usage": {
-      "prompt_tokens": 3924,
-      "completion_tokens": 267,
-      "total_tokens": 4191
+      "prompt_tokens": 1866,
+      "completion_tokens": 653,
+      "total_tokens": 2519
     }
   },
-  "5dfff25a84bd005b2a4298333c406c4dbb1e9959fbe8b40a725fb00853632f8f": {
-    "text": "I'll start by testing the leading hypotheses. Since pool gauges are fast signals, I'll query pool_in_use to test SM-012 (connection_pool_exhaustion), which is a strong candidate for high p99 latency on a DB-heavy endpoint.",
+  "95485b31b5fd396a2986eac6152ae682f6c0f9c0db9ce33d27d1b6736b2c903e": {
+    "text": "I'll start by analyzing the incident. The alert is HighErrorRate on /orders. The leading candidates involve connection pool exhaustion (SM-001) and upstream dependency failures. Since pool gauges are fast signals, I'll test SM-001 first with a pool_in_use query.",
     "usage": {
-      "prompt_tokens": 1888,
-      "completion_tokens": 708,
-      "total_tokens": 2596
+      "prompt_tokens": 2376,
+      "completion_tokens": 1297,
+      "total_tokens": 3673
     }
   },
-  "d584af0965b30d476e987909f7ef8b009bf13d3a7e84a107847a43aaf3ad99dc": {
-    "text": "I'll start by testing the leading hypothesis (SM-019) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
+  "8406ddba1246e3a6b9f4ed0d3e8097a9e3472b501afb42d18fffe6920bc47e92": {
+    "text": "Experiment submitted. Summary of this iteration:\n\n**Hypotheses (retained, IDs unchanged):**\n- **SM-014** (connection_pool_exhaustion via `charge_payment`) \u2014 leading, conf 0.55\n- **SM-016** (connection_pool_exhaustion via `execute_charge`) \u2014 conf 0.50\n- **SM-013** (race_condition_idempotency) \u2014 conf 0.45\n- **SM-015** (missing_index_n_plus_1) \u2014 conf 0.45\n\n**Chosen experiment:** `query_metrics` / `pool_in_use` on `payment` `/payment/charge` (600s window) to test the leading pool-exhaustion hypothesis.\n\n**Disconfirming condition:** If `pool_utilization_ratio` remains low (< 0.5) with `pool_in_use` well below `pool_capacity`, the pool hypotheses (SM-014/SM-016) are weakened and I'll pivot toward the idempotency race (SM-013) and missing-index (SM-015) causes via logs/latency.",
     "usage": {
-      "prompt_tokens": 1862,
-      "completion_tokens": 722,
-      "total_tokens": 2584
+      "prompt_tokens": 3014,
+      "completion_tokens": 241,
+      "total_tokens": 3255
     }
   },
-  "c5bf8ab28d7d367a46a2d7310eaff90bac55ce85dcb65b49c6242541f840ca3f": {
-    "text": "I'll start by prioritizing hypotheses. The alert is HighErrorRate on POST /orders (create_order), which synchronously calls auth, inventory, and payment. The fastest discriminating signal is the DB connection pool gauge, since pool exhaustion (SM-005) would explain errors across all downstream calls. Let me check pool metrics first.",
+  "d566b6f4833baaf32be7542f4baf4e589a979f061193d5e81d81c2fb299bc442": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
     "usage": {
-      "prompt_tokens": 2223,
-      "completion_tokens": 1195,
-      "total_tokens": 3418
-    }
-  },
-  "02cac75712615382a1798d3985f678aebbcfa2db4cd08cba87c8179ed2d81ce4": {
-    "text": "I've submitted the experiment step. Here's a summary of my reasoning:\n\n**Leading hypothesis (SM-019, conf 0.55):** orders.health() \u2192 db.connection_pool exhaustion. The /health latency spike is consistent with pool saturation on the orders DB path.\n\n**Rival hypotheses retained:** SM-020 (payment DB pool) and SM-021 (inventory DB pool) at 0.45 each \u2014 same failure mode, different DB path, not yet distinguished.\n\n**Chosen experiment:** `query_metrics` with `pool_in_use` template against the orders service. Pool gauges are a faster signal than p99 latency, so this directly tests whether the orders connection pool is saturated.\n\n**Disconfirming condition:** If orders `pool_utilization_ratio` is low (< 0.7) with `pool_in_use` far below `pool_capacity`, the leading hypothesis is disproven and I'll pivot to the rival DB paths (payment/inventory) or consider alternative failure modes.",
-    "usage": {
-      "prompt_tokens": 2731,
-      "completion_tokens": 212,
-      "total_tokens": 2943
-    }
-  },
-  "9324abc7c0941e6f47399c5a9e38dd96d64b3c8e2aa27ec7f972638f38a0bc9d": {
-    "text": "I'll start by testing the connection pool exhaustion hypothesis, since pool gauges are fast signals and pool exhaustion is a common cause of high error rates on DB-heavy endpoints.",
-    "usage": {
-      "prompt_tokens": 1884,
-      "completion_tokens": 741,
-      "total_tokens": 2625
-    }
-  },
-  "7d30d2a54d1a65763164b059f870ad1546c16041b3a615d3c4cc5ffc4088ac28": {
-    "text": "I'll start by testing the leading hypothesis. Since all three hypotheses are equally weighted (0.50), I'll prioritize SM-012 (connection_pool_exhaustion) as the leading candidate because pool gauges are fast, high-signal indicators and pool exhaustion is a common cause of p99 latency spikes on DB-heavy endpoints. I'll query pool metrics to test it.",
-    "usage": {
-      "prompt_tokens": 1887,
-      "completion_tokens": 805,
-      "total_tokens": 2692
-    }
-  },
-  "1b74349c6835027841ac85c074e635ce9c17b186abfbcbc836bb64dcab10db65": {
-    "text": "I'll start by testing the leading hypothesis (SM-019, orders health \u2192 connection pool) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
-    "usage": {
-      "prompt_tokens": 1861,
-      "completion_tokens": 731,
-      "total_tokens": 2592
-    }
-  },
-  "deef10266ebc5cfc59fbf6679db227f9deffb0600fdf5f3c0cfe77386b4b49f6": {
-    "text": "I'll start by testing the leading hypothesis. Given the alert is high error rate on POST /orders, and the endpoint orchestrates synchronous downstream calls (auth, inventory, payment) plus a DB connection pool, the fastest discriminating signal is the connection pool gauge \u2014 pool exhaustion would show high utilization. But upstream dependency failures are equally plausible. Let me pick the pool gauge first since it's a fast signal and can quickly rule in/out pool exhaustion (SM-005), which is a common cause of high error rate under downstream slowness.",
-    "usage": {
-      "prompt_tokens": 2221,
-      "completion_tokens": 1278,
-      "total_tokens": 3499
-    }
-  },
-  "d67396a736128e8b35ed2097aa468834f337a9f48534cdb2edc2122b051f7598": {
-    "text": "I'll start by testing the leading hypotheses. Since connection pool exhaustion (SM-012) and missing index (SM-013) both produce high error rates under load, and pool gauges are the fastest signal, I'll query pool metrics first to discriminate between them.",
-    "usage": {
-      "prompt_tokens": 1883,
-      "completion_tokens": 827,
-      "total_tokens": 2710
-    }
-  },
-  "8dd766c792566962de8bda75559bc2d6d354352c41684a77c4919dd63829127d": {
-    "text": "I'll start by testing the leading hypothesis. Since all three hypotheses are equally weighted (0.50), I'll prioritize the connection pool exhaustion hypothesis (SM-012), as pool gauges are fast, high-signal indicators that can quickly confirm or rule out resource saturation before investigating query-level issues.",
-    "usage": {
-      "prompt_tokens": 1888,
-      "completion_tokens": 763,
-      "total_tokens": 2651
-    }
-  },
-  "08f27f4bde8b3aef7a1fafa8f65e30b434f62d1836c8db717d034de4ec1dbc09": {
-    "text": "I'll start by testing the leading hypothesis (SM-019) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
-    "usage": {
-      "prompt_tokens": 1863,
+      "prompt_tokens": 1866,
       "completion_tokens": 696,
-      "total_tokens": 2559
+      "total_tokens": 2562
     }
   },
-  "d33c86549f31a3572005bd07f909099e5866ad981ffd4f48f3a7f41494d80d38": {
-    "text": "I'll start by testing the leading hypothesis. Since the alert is HighErrorRate on POST /orders, and the endpoint orchestrates synchronous downstream calls (auth, inventory, payment), the most likely leading candidate is an upstream dependency failure. However, pool gauges are a faster signal than latency, so I'll first check the connection pool state to rule in/out pool exhaustion (SM-005) which is a common cause of high error rates under downstream slowness.\n\nLet me pick the pool_in_use metric query as the fastest discriminating signal.",
+  "c84e45b49958e214548e5dd1c41a24e2db9760a2be43ce36508eba1d5be47b40": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point to pool exhaustion. I'll query pool_in_use to check utilization.",
     "usage": {
-      "prompt_tokens": 2219,
-      "completion_tokens": 1255,
-      "total_tokens": 3474
+      "prompt_tokens": 1958,
+      "completion_tokens": 807,
+      "total_tokens": 2765
     }
   },
-  "a4950438425553cb5408c3246037dc085f29e64e1dd31405be839c089dfd527d": {
-    "text": "I'll start by testing the leading hypotheses. Since connection pool exhaustion (SM-012) and missing index (SM-013) both produce high error rates under load, and pool gauges are the fastest signal, I'll query pool metrics first to discriminate between them.",
+  "b8237c6ee61ccefef0a5828a66c7aff77879230102f2a3f1720742874d3776ed": {
+    "text": "I'll start by testing the leading hypothesis. Since the alert is high p99 latency on POST /orders, connection pool exhaustion (SM-001) is a strong candidate \u2014 it's a fast signal via pool gauges. I'll query pool_in_use to check utilization.",
     "usage": {
-      "prompt_tokens": 1883,
-      "completion_tokens": 741,
-      "total_tokens": 2624
+      "prompt_tokens": 2379,
+      "completion_tokens": 1304,
+      "total_tokens": 3683
     }
   },
-  "e7b2d59e8885a3501b633c44e4e3651374070470a6e8e390be9f42acf9eef479": {
-    "text": "I'll start by testing the leading hypothesis. Since all three hypotheses are equally weighted (0.50), I'll prioritize SM-012 (connection_pool_exhaustion) because pool gauges are fast, high-signal indicators that can quickly confirm or rule out pool saturation \u2014 and pool exhaustion is a common cause of high p99 latency on DB-heavy endpoints.",
+  "46420cabec41b4e52822225e87948c07a92df5006d62e23b59a8dfea16472f10": {
+    "text": "The `disconfirming_if` must be inside the `chosen_experiment` object. Let me retry.",
     "usage": {
-      "prompt_tokens": 1887,
-      "completion_tokens": 744,
-      "total_tokens": 2631
+      "prompt_tokens": 3784,
+      "completion_tokens": 1331,
+      "total_tokens": 5115
     }
   },
-  "bbb5e3a2118abe1e7af4db94656301e376ffcc6edc675b7471fef9ee02b2ceb3": {
-    "text": "I'll start by testing the leading hypothesis (SM-019) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
+  "f67a9ed16fb54072efc718cefcc4c918490a1823cbfb92f03a4c4db958bd1f90": {
+    "text": "I'll start by testing the leading hypothesis (connection pool exhaustion) with a fast pool gauge query on the health service.",
     "usage": {
-      "prompt_tokens": 1863,
-      "completion_tokens": 646,
-      "total_tokens": 2509
+      "prompt_tokens": 1867,
+      "completion_tokens": 679,
+      "total_tokens": 2546
     }
   },
-  "f36b38ea11c486fbdf9d3954f8af31a7d98f84e58ced432d178f2f55327ee330": {
-    "text": "I'll start by testing the leading hypothesis. Since the alert is HighErrorRate on POST /orders, and the endpoint orchestrates synchronous downstream calls (auth, inventory, payment), the most likely leading cause is an upstream dependency failure. I'll use a fast signal (pool gauges) to first rule out connection pool exhaustion, but the most direct test for upstream dependency failure is fetching logs to see downstream error signatures.\n\nLet me prioritize: pool gauges are fast and can quickly disconfirm pool exhaustion (SM-005), which would elevate upstream dependency hypotheses. I'll query pool_in_use first.",
+  "cd6121f27160340c12b09bbc12dd1db608a994989dd90428675a4193dc9f6d40": {
+    "text": "I'll start by testing the connection pool exhaustion hypotheses, since pool gauges are fast signals and two of the four hypotheses (SM-014, SM-016) point to pool exhaustion.",
     "usage": {
-      "prompt_tokens": 2220,
-      "completion_tokens": 976,
-      "total_tokens": 3196
+      "prompt_tokens": 1962,
+      "completion_tokens": 950,
+      "total_tokens": 2912
     }
   },
-  "74af587f0475bb22d4d5d9b22434189ee60bfb8395ae7289e75308a8aab5f8bb": {
-    "text": "I'll start by testing the connection pool exhaustion hypothesis, since pool gauges are a fast signal and pool exhaustion is a common cause of high error rates on payment endpoints.",
+  "fc734913f900ee5f5b36af3cbe3d098a376770e40fb07d30b7ebaf42b3cdc123": {
+    "text": "I'll start by testing the leading hypothesis. Since the alert is HighErrorRate on POST /orders, and connection pool exhaustion (SM-001) is a strong candidate that also produces fast signals, I'll query pool metrics first.",
     "usage": {
-      "prompt_tokens": 1885,
-      "completion_tokens": 703,
-      "total_tokens": 2588
-    }
-  },
-  "3247a662f7f405e54ac7fbf659633a64ab1f8b4fe28cdceade1d76af4f906faf": {
-    "text": "I'll start by testing the connection pool exhaustion hypothesis, since pool gauges are a fast signal and the endpoint orchestrates downstream calls while holding DB connections.",
-    "usage": {
-      "prompt_tokens": 2225,
-      "completion_tokens": 1366,
-      "total_tokens": 3591
-    }
-  },
-  "f7244bf8a024f3d73da25010f0026f9a34c239942fa07652b4a6e1f93f1df7ac": {
-    "text": "I'll start by testing the leading hypothesis. Since all three hypotheses are equally weighted (0.50), I'll prioritize SM-012 (connection_pool_exhaustion) as the leading candidate because pool gauges are fast, high-signal indicators and pool exhaustion is a common cause of p99 latency spikes on DB-heavy endpoints. I'll query pool metrics to test it.",
-    "usage": {
-      "prompt_tokens": 1888,
-      "completion_tokens": 797,
-      "total_tokens": 2685
-    }
-  },
-  "0d86d40579ab279f220697d39503db9532a8a9eb57510262166388bff270f14f": {
-    "text": "I'll start by testing the leading hypothesis (SM-019, orders health \u2192 connection pool) with a fast pool gauge query, since pool gauges are quicker signals than p99 latency.",
-    "usage": {
-      "prompt_tokens": 1862,
-      "completion_tokens": 704,
-      "total_tokens": 2566
-    }
-  },
-  "e135a53e3b24353f0ee5246d5a43ec337d6bbba645d2a84b75f30872bf406e47": {
-    "text": "I'll start by testing the leading hypothesis. Since the alert is HighErrorRate on POST /orders, and the endpoint orchestrates synchronous downstream calls (auth, inventory, payment), the most likely leading cause is an upstream dependency failure. I'll use a fast signal first: pool gauges via query_metrics to check for connection pool exhaustion, which would also implicate SM-005.\n\nLet me select the leading hypothesis (SM-003 payment.charge, a common failure point) and test with pool_in_use metrics as a fast signal.",
-    "usage": {
-      "prompt_tokens": 2221,
-      "completion_tokens": 1206,
-      "total_tokens": 3427
-    }
-  },
-  "dd5f0f8b186fb8eeb1afc0216ed3f1a815747cc17034b149d2d59a66428570a5": {
-    "text": "I'll start by testing the leading hypotheses. Since connection pool exhaustion (SM-012) and missing index (SM-013) both produce high error rates under load, and pool gauges are the fastest signal, I'll query pool metrics first to discriminate between them.",
-    "usage": {
-      "prompt_tokens": 1883,
-      "completion_tokens": 768,
-      "total_tokens": 2651
+      "prompt_tokens": 2376,
+      "completion_tokens": 1338,
+      "total_tokens": 3714
     }
   }
 }
