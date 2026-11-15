@@ -32,7 +32,10 @@ from a2a.utils import new_agent_text_message
 
 from surveyops.schemas import ExperimentRequest, Observation
 from surveyops.a2a_utils import from_a2a_message, to_a2a_text_part
+from surveyops.observability import init_observability
 from .agent import ExperimentRunnerAgent
+
+init_observability("surveyops-runner")
 
 
 class RunnerAgentExecutor(AgentExecutor):
@@ -144,13 +147,11 @@ def create_runner_a2a_app(host: str = "0.0.0.0", port: int = 8005) -> FastAPI:
 
     @fastapi_app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        # Allow agent discovery, documentation, and health endpoints
+        # Allow agent discovery and documentation endpoints
         if request.method == "GET" and (
-            request.url.path in ("/.well-known/agent.json", "/.well-known/agent-card.json", "/docs", "/openapi.json", "/health")
+            request.url.path in ("/.well-known/agent.json", "/.well-known/agent-card.json", "/docs", "/openapi.json")
             or request.url.path.startswith("/.well-known/")
         ):
-            if request.url.path == "/health":
-                return JSONResponse(status_code=200, content={"status": "healthy"})
             return await call_next(request)
 
         # Require shared secret on all other requests (POST / JSON-RPC)
