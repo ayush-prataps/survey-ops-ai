@@ -35,6 +35,9 @@ from a2a.utils import new_agent_text_message
 from surveyops.schemas import Outcome, DiagnosisResult, RemediationResult
 from surveyops.a2a_utils import from_a2a_message, to_a2a_text_part
 from surveyops.agents.remediator.agent import run_remediation
+from surveyops.observability import init_observability
+
+init_observability("surveyops-remediator")
 
 logger = logging.getLogger("surveyops.remediator.server")
 
