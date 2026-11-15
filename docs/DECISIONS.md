@@ -14,11 +14,11 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - **2026-10-14** Deadlines in the handout are negotiable with faculty. Optimize for a robust system, avoid overhead.
 - **2026-10-14** Docs structure: one canonical AGENTS.md, thin tool-specific pointers, one topic per docs file.
 - **2026-10-17** Ground-truth root cause for DB latency injection is `connection_pool_exhaustion` (FailureMode enum value). Reason: pool exhaustion is the application-level weakness the Remediator can patch (pool size, overflow, timeouts); DB latency is the external stressor that exposes it. Rejected: root cause = DB latency (infrastructure fault with no code fix).
+- **2026-11-15** Cloud provider and VM sizing: Google Cloud Platform (GCP) Compute Engine, machine type `e2-standard-4` (4 vCPUs, 16 GB RAM, 50 GB balanced persistent disk), Ubuntu 22.04 LTS. Reason: Full Docker Compose stack with ~17 containers requires 4 vCPUs and 16 GB memory to run reliably without OOM pressure; fully covered by student credits / free trial (~$0.134/hr). Rejected: `e2-micro` / `e2-medium` (insufficient RAM for 17 containers, leading to Docker OOM kills). Security: GCP VPC firewall permits only port 22 (SSH) and port 8050 (Demo UI); Toxiproxy port 8474 is bound strictly to loopback/data_net and never exposed publicly.
 
 ## OPEN (decide, then move up)
 1. Log source: Docker SDK stdout vs Loki.
 2. Where propositions live: Postgres table (assumed) vs other.
-3. Cloud provider and VM size.
 4. Langfuse Cloud vs self-hosted.
 7. Gemini tier allocation per agent.
 8. Silent faults: invariant counters and probes vs scope them out.
@@ -272,3 +272,8 @@ Format: date, decision, reason, alternatives rejected. Append only. Update OPEN 
 - **Demo UI Static Architecture Config Serving:** Embedded `architecture_config.json` in `surveyops/demo_ui/static/` and served at both `/static/architecture_config.json` and `/architecture_config.json` with fallback handling and dedicated unit tests in `tests/test_demo_ui.py`.
 - **UI Alert Warning & Narration Banner:** Added immediate status rendering `"Alert firing, waiting for /investigate"` when an alert is FIRING before an incident opens. Implemented 90s timer surfacing a visible warning banner if the investigation fails to start.
 - **Dependency & Workspace Volume Hygiene:** Pinned `litellm==1.105.1` and `mcp==1.28.1` to eliminate upstream MCP type import breakage. Remediator installs target dependencies (`sqlalchemy`, `psycopg`, `prometheus-fastapi-instrumentator`) and executes `git clean -fd` in `create_fix_branch` to prevent untracked test accumulation across trials.
+
+## 2026-11-15: Cloud Deployment Architecture on GCP and Cross-Platform Pip Markers
+- **Cloud Platform & Machine Sizing (Requirement 11):** Selected Google Cloud Platform (GCP) Compute Engine with `e2-standard-4` (4 vCPUs, 16 GB memory, 50 GB disk), Ubuntu 22.04 LTS. Sizing verified against stack footprint (~17 containers across 4 Docker bridge networks). Created single-command VM bootstrap script `scripts/setup_gcp_vm.sh` and comprehensive guide `docs/08-GCP-DEPLOYMENT.md`.
+- **GCP VPC Firewall & Loopback Isolation:** Configured firewall rule allowing only TCP ports 22 (SSH) and 8050 (Demo UI). Host-level UFW default-deny active. Toxiproxy port 8474 bound strictly to `127.0.0.1:8474` and internal `data_net` Docker bridge, completely invisible from public IP and inaccessible to agent containers.
+- **Cross-Platform Virtual Environment & Pip Markers:** Updated `uvloop` dependency in `requirements.txt` with environment marker `; sys_platform != "win32"` to enable clean local virtual environment (`.venv`) creation on Windows while preserving high-performance event loop on Linux/GCP containers. Created initial `.env` configuration from `.env.example`. Tested and verified all core unit test suites (50 unit tests + 20 UI tests + 8 tools tests + 3 smoke tests passing).
