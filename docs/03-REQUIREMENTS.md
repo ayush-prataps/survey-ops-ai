@@ -12,7 +12,7 @@
 | 8 | Guardrails | Runner tool allowlist and load caps; Pydantic validation on tool returns; log sanitization against prompt injection; Remediator file/token limits; repo URL allowlist; `/investigate` shared secret. | 06-SAFETY-OBSERVABILITY.md | Designed |
 | 9 | Observability and tracing | Langfuse via OpenTelemetry. ADK emits OTel. CrewAI via OpenInference or OpenLIT (test early). Cloud vs self-host OPEN. | infra, callbacks | Not started |
 | 10 | End-to-end performance, cost, runtime | Per trial: time-to-detect, time-to-diagnosis, time-to-PR, iterations, tokens, notional cost at list price. Compare against single-LLM baseline. | 07-EVALUATION.md | Designed |
-| 11 | Cloud deployment | Full Docker Compose stack on one cloud VM (GCP Compute Engine e2-standard-4). Only Demo UI public (:8050), rest on internal network. Automated bootstrap script scripts/setup_gcp_vm.sh. | `08-GCP-DEPLOYMENT.md`, `05-INFRA.md` | Complete |
+| 11 | Cloud deployment | Full Docker Compose stack on one cloud VM. Only dashboard public, rest on internal network. Deploy a skeleton early. | 05-INFRA.md | Not started |
 
 ## Other course rules
 - Every member must be able to explain and modify any component. Roles rotate across phases.

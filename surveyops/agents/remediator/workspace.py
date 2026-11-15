@@ -7,24 +7,16 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 
+from surveyops.redaction import redact_tokens
+
 load_dotenv()
 
 logger = logging.getLogger("surveyops.remediator.workspace")
-
-TOKEN_PATTERN = re.compile(r"(?:github_pat_|ghp_|gho_)[A-Za-z0-9_]+")
-
-
-def redact_tokens(text: str) -> str:
-    """Redacts GitHub personal access tokens matching github_pat_, ghp_, or gho_."""
-    if not text:
-        return text
-    return TOKEN_PATTERN.sub("[REDACTED_TOKEN]", text)
 
 
 def get_authenticated_repo_url(repo_url: Optional[str] = None, token: Optional[str] = None) -> str:

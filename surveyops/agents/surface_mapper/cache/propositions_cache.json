@@ -1,18 +1,18 @@
 {
-  "cache_key": "b630e0dd244ae8b8759735a6c7ae1480396f96ce4d3a9fe49ff51d638c77d4a6",
+  "cache_key": "0688a45cbdec03aaf7b4295ba81c8eac1669dfdfa616344076563520ae0858b0",
   "propositions": [
     {
       "proposition_id": "SM-001",
       "endpoint": "POST /orders",
-      "failure_mode": "upstream_dependency_failure",
-      "justification": "orders.create_order() synchronously invokes auth.verify(); a timeout or failure in auth can abort order creation because no fallback edge is present in the static graph.",
-      "predicted_signal": "Order creation error rate rises when auth verification errors or times out.",
-      "graph_edge_ref": "orders.create_order() -> auth.verify()",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "orders.create_order() uses db.connection_pool while also synchronously invoking auth.verify(), inventory.reserve(), and payment.charge(); if an orders pool connection is held across those downstream waits, slow dependencies can exhaust the orders connection pool.",
+      "predicted_signal": "orders pool_utilization_ratio remains >= 0.8 while POST /orders latency increases with downstream dependency latency.",
+      "graph_edge_ref": "orders.create_order() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
-        "metric_name": "error_rate",
+        "metric_name": "pool_utilization_ratio",
         "comparator": ">=",
-        "threshold": 0.05,
+        "threshold": 0.8,
         "log_pattern": null
       }
     },
@@ -20,9 +20,9 @@
       "proposition_id": "SM-002",
       "endpoint": "POST /orders",
       "failure_mode": "upstream_dependency_failure",
-      "justification": "orders.create_order() synchronously invokes inventory.reserve(); inventory failures can break order creation because the graph shows no compensating or fallback path.",
-      "predicted_signal": "Order creation error rate rises when inventory reservation calls fail.",
-      "graph_edge_ref": "orders.create_order() -> inventory.reserve()",
+      "justification": "POST /orders depends synchronously on auth.verify(); an auth failure, timeout, or network disconnect on that edge can break order creation.",
+      "predicted_signal": "POST /orders error_rate rises to >= 0.05 when auth.verify() failures or timeouts occur.",
+      "graph_edge_ref": "orders.create_order() -> auth.verify()",
       "checkable_signal": {
         "type": "metric",
         "metric_name": "error_rate",
@@ -35,9 +35,9 @@
       "proposition_id": "SM-003",
       "endpoint": "POST /orders",
       "failure_mode": "upstream_dependency_failure",
-      "justification": "orders.create_order() synchronously invokes payment.charge(); payment unavailability can fail the order endpoint because the dependency is directly on the request path.",
-      "predicted_signal": "Order creation error rate rises when payment charge calls fail or time out.",
-      "graph_edge_ref": "orders.create_order() -> payment.charge()",
+      "justification": "POST /orders depends synchronously on inventory.reserve(); reserve failures or timeouts can fail the entire order creation path.",
+      "predicted_signal": "POST /orders error_rate rises to >= 0.05 when inventory reserve requests fail or time out.",
+      "graph_edge_ref": "orders.create_order() -> inventory.reserve()",
       "checkable_signal": {
         "type": "metric",
         "metric_name": "error_rate",
@@ -49,9 +49,39 @@
     {
       "proposition_id": "SM-004",
       "endpoint": "POST /orders",
+      "failure_mode": "upstream_dependency_failure",
+      "justification": "POST /orders depends synchronously on payment.charge(); payment charge failures or timeouts can fail order creation even when order DB resources are available.",
+      "predicted_signal": "POST /orders error_rate rises to >= 0.05 when payment charge requests fail or time out.",
+      "graph_edge_ref": "orders.create_order() -> payment.charge()",
+      "checkable_signal": {
+        "type": "metric",
+        "metric_name": "error_rate",
+        "comparator": ">=",
+        "threshold": 0.05,
+        "log_pattern": null
+      }
+    },
+    {
+      "proposition_id": "SM-005",
+      "endpoint": "POST /orders",
       "failure_mode": "retry_storm_no_backoff",
-      "justification": "POST /orders calls payment.charge() as a downstream HTTP dependency; if create_order retries failed charge attempts without a visible backoff edge, failures can amplify request volume.",
-      "predicted_signal": "Request rate to payment charge increases sharply during order creation failures.",
+      "justification": "If orders.create_order() retries inventory.reserve() on timeout or 5xx without backoff, repeated order attempts can amplify traffic to inventory during degradation.",
+      "predicted_signal": "Inventory reserve request_rate reaches >= 50.0 during inventory reserve failures or timeouts.",
+      "graph_edge_ref": "orders.create_order() -> inventory.reserve()",
+      "checkable_signal": {
+        "type": "metric",
+        "metric_name": "request_rate",
+        "comparator": ">=",
+        "threshold": 50.0,
+        "log_pattern": null
+      }
+    },
+    {
+      "proposition_id": "SM-006",
+      "endpoint": "POST /orders",
+      "failure_mode": "retry_storm_no_backoff",
+      "justification": "If orders.create_order() retries payment.charge() without backoff on failures, payment charge traffic can be amplified during payment degradation.",
+      "predicted_signal": "Payment charge request_rate reaches >= 50.0 during payment charge failures or timeouts.",
       "graph_edge_ref": "orders.create_order() -> payment.charge()",
       "checkable_signal": {
         "type": "metric",
@@ -62,26 +92,41 @@
       }
     },
     {
-      "proposition_id": "SM-005",
+      "proposition_id": "SM-007",
       "endpoint": "POST /orders",
-      "failure_mode": "connection_pool_exhaustion",
-      "justification": "orders.create_order() uses db.connection_pool while orchestrating downstream HTTP calls; slow downstream dependencies can hold order DB connections longer and exhaust the pool.",
-      "predicted_signal": "Orders DB pool utilization rises with slow auth, inventory, or payment responses.",
-      "graph_edge_ref": "orders.create_order() -> db.connection_pool",
+      "failure_mode": "retry_storm_no_backoff",
+      "justification": "If orders.create_order() retries auth.verify() without backoff on auth failures, repeated verification attempts can amplify load on the auth service.",
+      "predicted_signal": "Auth verify request_rate reaches >= 50.0 during auth verification failures or timeouts.",
+      "graph_edge_ref": "orders.create_order() -> auth.verify()",
       "checkable_signal": {
         "type": "metric",
-        "metric_name": "pool_utilization_ratio",
+        "metric_name": "request_rate",
         "comparator": ">=",
-        "threshold": 0.8,
+        "threshold": 50.0,
         "log_pattern": null
       }
     },
     {
-      "proposition_id": "SM-006",
+      "proposition_id": "SM-008",
+      "endpoint": "GET /orders",
+      "failure_mode": "missing_index_n_plus_1",
+      "justification": "orders.list_orders() accesses db.session; an unbounded order listing query without supporting indexes or eager fetching can produce full scans or N+1 query patterns.",
+      "predicted_signal": "Order listing requests emit slow query, seq scan, rows examined, or full table scan log patterns.",
+      "graph_edge_ref": "orders.list_orders() -> db.session",
+      "checkable_signal": {
+        "type": "log_pattern",
+        "metric_name": null,
+        "comparator": null,
+        "threshold": null,
+        "log_pattern": "slow query|seq scan|rows examined|full table scan"
+      }
+    },
+    {
+      "proposition_id": "SM-009",
       "endpoint": "GET /orders",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "orders.list_orders() accesses db.connection_pool; repeated list requests can occupy pool connections long enough to exhaust the orders DB pool.",
-      "predicted_signal": "Orders DB pool utilization increases under sustained order-list traffic.",
+      "justification": "orders.list_orders() uses db.connection_pool; large result sets or slow listing queries can hold pool connections long enough to saturate the orders pool under concurrency.",
+      "predicted_signal": "orders pool_utilization_ratio remains >= 0.8 during high GET /orders concurrency or slow order-list queries.",
       "graph_edge_ref": "orders.list_orders() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
@@ -92,26 +137,11 @@
       }
     },
     {
-      "proposition_id": "SM-007",
-      "endpoint": "GET /orders",
-      "failure_mode": "missing_index_n_plus_1",
-      "justification": "orders.list_orders() reads directly through db.session with no index or pagination edge visible in the static graph, allowing full scans or N+1 style row retrieval for order lists.",
-      "predicted_signal": "Slow query or sequential scan log patterns appear during order-list requests.",
-      "graph_edge_ref": "orders.list_orders() -> db.session",
-      "checkable_signal": {
-        "type": "log_pattern",
-        "metric_name": null,
-        "comparator": null,
-        "threshold": null,
-        "log_pattern": "slow query|seq scan|rows examined|full table scan"
-      }
-    },
-    {
-      "proposition_id": "SM-008",
+      "proposition_id": "SM-010",
       "endpoint": "GET /orders",
       "failure_mode": "pagination_off_by_one",
-      "justification": "GET /orders is backed by orders.list_orders() straight against db.session, and no pagination boundary normalization edge is visible; offset or page calculations can produce duplicate or missed rows at boundaries.",
-      "predicted_signal": "Pagination boundary requests show duplicate page items or invalid offset log entries.",
+      "justification": "If GET /orders exposes page or offset pagination through orders.list_orders(), boundary arithmetic can duplicate or skip order records when page size or offset is calculated.",
+      "predicted_signal": "Order listing logs show off-by-one, invalid offset, or duplicate page item signals at pagination boundaries.",
       "graph_edge_ref": "orders.list_orders() -> db.session",
       "checkable_signal": {
         "type": "log_pattern",
@@ -122,11 +152,11 @@
       }
     },
     {
-      "proposition_id": "SM-009",
+      "proposition_id": "SM-011",
       "endpoint": "GET /orders/{order_id}",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "orders.get_order() uses db.connection_pool for individual order lookups; high request concurrency can accumulate connection usage and exhaust the pool.",
-      "predicted_signal": "Orders DB pool utilization rises with high-cardinality order lookup traffic.",
+      "justification": "orders.get_order() uses db.connection_pool; high concurrency or slow single-order DB lookups can hold pool connections and exhaust the orders pool.",
+      "predicted_signal": "orders pool_utilization_ratio remains >= 0.8 while GET /orders/{order_id} latency increases.",
       "graph_edge_ref": "orders.get_order() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
@@ -137,11 +167,11 @@
       }
     },
     {
-      "proposition_id": "SM-010",
+      "proposition_id": "SM-012",
       "endpoint": "GET /orders/{order_id}",
       "failure_mode": "missing_index_n_plus_1",
-      "justification": "orders.get_order() accesses db.session by order_id, but the static graph exposes no indexed lookup edge; this permits table scans for order lookups.",
-      "predicted_signal": "Slow query or sequential scan log patterns appear for order lookups.",
+      "justification": "orders.get_order() accesses db.session by order_id; if the lookup path lacks an index or performs extra dependent fetches, it can cause full scans or N+1 patterns.",
+      "predicted_signal": "Single-order lookup emits slow query, seq scan, rows examined, or full table scan log patterns.",
       "graph_edge_ref": "orders.get_order() -> db.session",
       "checkable_signal": {
         "type": "log_pattern",
@@ -152,11 +182,11 @@
       }
     },
     {
-      "proposition_id": "SM-011",
+      "proposition_id": "SM-013",
       "endpoint": "POST /payment/charge",
       "failure_mode": "race_condition_idempotency",
-      "justification": "payment.charge_payment() invokes payment.check_idempotency() before DB work, but the static graph shows separate idempotency-check and persistence edges without an atomic transaction boundary; concurrent identical charges can race past the check.",
-      "predicted_signal": "Duplicate key, unique constraint, or concurrent idempotency log patterns appear during charge requests.",
+      "justification": "payment.charge_payment() invokes payment.check_idempotency() before executing charge logic; if the idempotency check and charge write are not atomic, concurrent identical charge requests can both pass the check.",
+      "predicted_signal": "Payment charge logs show duplicate key, unique constraint, or concurrent idempotency patterns under duplicate concurrent charge requests.",
       "graph_edge_ref": "payment.charge_payment() -> payment.check_idempotency()",
       "checkable_signal": {
         "type": "log_pattern",
@@ -167,11 +197,11 @@
       }
     },
     {
-      "proposition_id": "SM-012",
+      "proposition_id": "SM-014",
       "endpoint": "POST /payment/charge",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "payment.charge_payment() uses db.connection_pool while also invoking idempotency checks and DB session work; concurrent charge traffic can exhaust the payment DB pool.",
-      "predicted_signal": "Payment DB pool utilization rises under concurrent charge requests.",
+      "justification": "payment.charge_payment() uses db.connection_pool while coordinating idempotency and charge execution; slow DB operations or held transactions can exhaust the payment pool.",
+      "predicted_signal": "payment pool_utilization_ratio remains >= 0.8 during elevated POST /payment/charge latency.",
       "graph_edge_ref": "payment.charge_payment() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
@@ -182,11 +212,11 @@
       }
     },
     {
-      "proposition_id": "SM-013",
+      "proposition_id": "SM-015",
       "endpoint": "POST /payment/charge",
       "failure_mode": "missing_index_n_plus_1",
-      "justification": "payment.check_idempotency() queries db.session for idempotency state, but the static graph shows no index edge for the idempotency lookup, allowing full scans on the payment store.",
-      "predicted_signal": "Idempotency lookup slow query or sequential scan log patterns appear during charge processing.",
+      "justification": "payment.check_idempotency() queries db.session; if idempotency-key lookup is not indexed, repeated or duplicate charge attempts can trigger full scans or N+1-style query overhead.",
+      "predicted_signal": "Idempotency-check logs emit slow query, seq scan, rows examined, or full table scan patterns during charge traffic.",
       "graph_edge_ref": "payment.check_idempotency() -> db.session",
       "checkable_signal": {
         "type": "log_pattern",
@@ -197,12 +227,12 @@
       }
     },
     {
-      "proposition_id": "SM-014",
-      "endpoint": "POST /inventory/{item_id}/reserve",
+      "proposition_id": "SM-016",
+      "endpoint": "POST /payment/charge",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "inventory.reserve_stock() uses db.connection_pool for stock reservation; concurrent reserve requests can hold inventory DB connections and exhaust the pool.",
-      "predicted_signal": "Inventory DB pool utilization rises under repeated reserve requests.",
-      "graph_edge_ref": "inventory.reserve_stock() -> db.connection_pool",
+      "justification": "payment.execute_charge() uses db.connection_pool; if charge execution performs slow writes or holds the connection while processing, payment pool connections can be exhausted.",
+      "predicted_signal": "payment pool_utilization_ratio remains >= 0.8 during slow execute_charge DB operations.",
+      "graph_edge_ref": "payment.execute_charge() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
         "metric_name": "pool_utilization_ratio",
@@ -212,26 +242,11 @@
       }
     },
     {
-      "proposition_id": "SM-015",
-      "endpoint": "POST /inventory/{item_id}/reserve",
-      "failure_mode": "missing_index_n_plus_1",
-      "justification": "inventory.reserve_stock() accesses db.session for item stock state, but the static graph exposes no indexed lookup or update edge, permitting full scans during reservation.",
-      "predicted_signal": "Reservation requests emit slow query or sequential scan log patterns.",
-      "graph_edge_ref": "inventory.reserve_stock() -> db.session",
-      "checkable_signal": {
-        "type": "log_pattern",
-        "metric_name": null,
-        "comparator": null,
-        "threshold": null,
-        "log_pattern": "slow query|seq scan|rows examined|full table scan"
-      }
-    },
-    {
-      "proposition_id": "SM-016",
+      "proposition_id": "SM-017",
       "endpoint": "POST /inventory/{item_id}/reserve",
       "failure_mode": "race_condition_idempotency",
-      "justification": "inventory.reserve_stock() is a state-changing POST backed by db.session, and the static graph shows no idempotency-key check edge; concurrent retries can double-apply a reservation.",
-      "predicted_signal": "Duplicate key, unique constraint, or concurrent idempotency log patterns appear during reserve requests.",
+      "justification": "inventory.reserve_stock() modifies inventory through db.session; concurrent identical reserve requests can race if the read-modify-write stock update is not atomic or idempotent.",
+      "predicted_signal": "Inventory reserve logs show concurrent idempotency, unique constraint, or duplicate key patterns during duplicate concurrent reserve calls.",
       "graph_edge_ref": "inventory.reserve_stock() -> db.session",
       "checkable_signal": {
         "type": "log_pattern",
@@ -242,12 +257,12 @@
       }
     },
     {
-      "proposition_id": "SM-017",
-      "endpoint": "GET /inventory/{item_id}",
+      "proposition_id": "SM-018",
+      "endpoint": "POST /inventory/{item_id}/reserve",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "inventory.get_item() uses db.connection_pool for item lookups; sustained lookup traffic can exhaust the inventory DB pool.",
-      "predicted_signal": "Inventory DB pool utilization rises with repeated item lookup requests.",
-      "graph_edge_ref": "inventory.get_item() -> db.connection_pool",
+      "justification": "inventory.reserve_stock() uses db.connection_pool for the reservation transaction; lock waits or slow stock updates can hold connections and exhaust the inventory pool.",
+      "predicted_signal": "inventory pool_utilization_ratio remains >= 0.8 while reserve-stock latency is elevated.",
+      "graph_edge_ref": "inventory.reserve_stock() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
         "metric_name": "pool_utilization_ratio",
@@ -257,11 +272,11 @@
       }
     },
     {
-      "proposition_id": "SM-018",
+      "proposition_id": "SM-019",
       "endpoint": "GET /inventory/{item_id}",
       "failure_mode": "missing_index_n_plus_1",
-      "justification": "inventory.get_item() reads via db.session by item_id, but no indexed lookup edge is visible in the static graph; item lookups can scan the inventory table.",
-      "predicted_signal": "Item lookup requests emit slow query or sequential scan log patterns.",
+      "justification": "inventory.get_item() accesses db.session by item_id; if item_id lookup is not indexed, item retrieval can perform full table scans or extra dependent queries.",
+      "predicted_signal": "Inventory item lookup emits slow query, seq scan, rows examined, or full table scan log patterns.",
       "graph_edge_ref": "inventory.get_item() -> db.session",
       "checkable_signal": {
         "type": "log_pattern",
@@ -272,27 +287,12 @@
       }
     },
     {
-      "proposition_id": "SM-019",
-      "endpoint": "GET /health",
-      "failure_mode": "connection_pool_exhaustion",
-      "justification": "orders.health() accesses db.connection_pool; frequent health probes or DB latency can consume orders DB connections and contribute to pool exhaustion.",
-      "predicted_signal": "Orders DB pool utilization rises during health-check bursts.",
-      "graph_edge_ref": "orders.health() -> db.connection_pool",
-      "checkable_signal": {
-        "type": "metric",
-        "metric_name": "pool_utilization_ratio",
-        "comparator": ">=",
-        "threshold": 0.8,
-        "log_pattern": null
-      }
-    },
-    {
       "proposition_id": "SM-020",
-      "endpoint": "GET /health",
+      "endpoint": "GET /inventory/{item_id}",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "payment.health() accesses db.connection_pool; repeated payment health probes can hold payment DB connections and exhaust the pool.",
-      "predicted_signal": "Payment DB pool utilization rises during health-check bursts.",
-      "graph_edge_ref": "payment.health() -> db.connection_pool",
+      "justification": "inventory.get_item() uses db.connection_pool; high read traffic or slow item lookups can occupy pool connections and exhaust the inventory pool.",
+      "predicted_signal": "inventory pool_utilization_ratio remains >= 0.8 during elevated GET /inventory/{item_id} traffic.",
+      "graph_edge_ref": "inventory.get_item() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
         "metric_name": "pool_utilization_ratio",
@@ -305,8 +305,38 @@
       "proposition_id": "SM-021",
       "endpoint": "GET /health",
       "failure_mode": "connection_pool_exhaustion",
-      "justification": "inventory.health() accesses db.connection_pool; health checks that touch the inventory DB can consume connections under probe pressure.",
-      "predicted_signal": "Inventory DB pool utilization rises during health-check bursts.",
+      "justification": "orders.health() uses db.connection_pool; frequent health probes or slow DB health checks can consume orders pool connections and reduce capacity for business traffic.",
+      "predicted_signal": "orders pool_utilization_ratio reaches >= 0.8 during high-frequency orders health probing or slow health DB checks.",
+      "graph_edge_ref": "orders.health() -> db.connection_pool",
+      "checkable_signal": {
+        "type": "metric",
+        "metric_name": "pool_utilization_ratio",
+        "comparator": ">=",
+        "threshold": 0.8,
+        "log_pattern": null
+      }
+    },
+    {
+      "proposition_id": "SM-022",
+      "endpoint": "GET /health",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "payment.health() uses db.connection_pool; repeated health checks or slow payment DB health queries can hold connections and exhaust the payment pool.",
+      "predicted_signal": "payment pool_utilization_ratio reaches >= 0.8 during high-frequency payment health probing or slow health DB checks.",
+      "graph_edge_ref": "payment.health() -> db.connection_pool",
+      "checkable_signal": {
+        "type": "metric",
+        "metric_name": "pool_utilization_ratio",
+        "comparator": ">=",
+        "threshold": 0.8,
+        "log_pattern": null
+      }
+    },
+    {
+      "proposition_id": "SM-023",
+      "endpoint": "GET /health",
+      "failure_mode": "connection_pool_exhaustion",
+      "justification": "inventory.health() uses db.connection_pool; frequent or slow DB-backed health checks can consume inventory pool connections and reduce reserve/read capacity.",
+      "predicted_signal": "inventory pool_utilization_ratio reaches >= 0.8 during high-frequency inventory health probing or slow health DB checks.",
       "graph_edge_ref": "inventory.health() -> db.connection_pool",
       "checkable_signal": {
         "type": "metric",
@@ -319,9 +349,9 @@
   ],
   "dropped": [],
   "token_usage": {
-    "total_tokens": 13111,
+    "total_tokens": 14381,
     "prompt_tokens": 3146,
-    "completion_tokens": 9965
+    "completion_tokens": 11235
   },
   "metadata": {
     "graph_nodes": 31,

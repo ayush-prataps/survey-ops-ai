@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir --default-timeout=100 fastapi uvicorn httpx psycopg2-binary pydantic
+RUN pip install --no-cache-dir fastapi uvicorn httpx psycopg2-binary pydantic
 COPY surveyops/controller /app/surveyops/controller
 ENV PYTHONPATH=/app
 EXPOSE 8088

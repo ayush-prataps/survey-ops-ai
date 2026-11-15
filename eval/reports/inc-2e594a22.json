@@ -1,0 +1,152 @@
+{
+  "incident_id": "inc-2e594a22",
+  "diagnosis": {
+    "incident_id": "inc-2e594a22",
+    "outcome": "root_cause",
+    "root_cause": "connection_pool_exhaustion",
+    "endpoint": "/payment/charge",
+    "supporting_proposition_id": "SM-014",
+    "graph_edge_ref": "payment.charge_payment() -> db.connection_pool",
+    "confidence": 0.8,
+    "self_reported_confidence": 0.72,
+    "ruled_out": [],
+    "iterations_used": 2
+  },
+  "evidence_trail": [
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-014",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 (pool fully utilized)",
+        "[req-inc-2e594a22-1:pool_max_in_use] = 5.0 equals pool_capacity=5.0, indicating saturation"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_in_use] = 3.0 is below pool_capacity=5.0 at sample time, so instantaneous in-use is not maxed"
+      ],
+      "confidence": 0.72,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use is well below pool_capacity (utilization ratio low, e.g. < 0.5) with no saturation trend during the alert window, which would rule out connection pool exhaustion as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (pool_in_use=3.0, pool_max_in_use=5.0, pool_capacity=5.0) is not below 0.5; pool is at/near saturation, so the disconfirming condition is not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-016",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0",
+        "[req-inc-2e594a22-1:pool_max_in_use] = 5.0 == pool_capacity=5.0"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_in_use] = 3.0 < pool_capacity=5.0 at sample time"
+      ],
+      "confidence": 0.68,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use is well below pool_capacity (utilization ratio low, e.g. < 0.5) with no saturation trend during the alert window, which would rule out connection pool exhaustion as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 >= 0.5 and pool_max_in_use=5.0 hits pool_capacity=5.0, so the disconfirming condition is not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-013",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 shows resource contention consistent with concurrent duplicate-charge retries amplifying load"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 reflects resource contention, not a direct idempotency/duplicate-charge signal"
+      ],
+      "confidence": 0.45,
+      "status": "active",
+      "quoted_disconfirming_if": "No duplicate-charge or idempotency-conflict errors appear and pool/DB metrics show no contention attributable to retry amplification during the alert window, which would rule out a race condition on idempotency as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 shows saturation but does not by itself confirm or rule out idempotency race conditions; no duplicate-charge signal in this observation."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-015",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 indicates DB-side contention that could stem from slow queries holding connections"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 is a pool-level signal, not a query-plan or index signal"
+      ],
+      "confidence": 0.45,
+      "status": "active",
+      "quoted_disconfirming_if": "Query latency metrics show fast per-query execution with no N+1 query count growth and no slow-query evidence during the alert window, which would rule out missing index / N+1 as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 indicates DB-side contention but this observation contains no query-plan or index metrics to rule out missing index / N+1."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-014",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 (pool fully utilized)",
+        "[req-inc-2e594a22-1:pool_max_in_use] = 5.0 equals pool_capacity=5.0, indicating saturation"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_in_use] = 3.0 is below pool_capacity=5.0 at sample time, so instantaneous in-use is not maxed"
+      ],
+      "confidence": 0.72,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use is well below pool_capacity (utilization ratio low, e.g. < 0.5) with no saturation trend during the alert window, which would rule out connection pool exhaustion as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 (pool_in_use=3.0, pool_max_in_use=5.0, pool_capacity=5.0) is not below 0.5; pool is at/near saturation, so the disconfirming condition is not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-016",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0",
+        "[req-inc-2e594a22-1:pool_max_in_use] = 5.0 == pool_capacity=5.0"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_in_use] = 3.0 < pool_capacity=5.0 at sample time"
+      ],
+      "confidence": 0.68,
+      "status": "active",
+      "quoted_disconfirming_if": "pool_in_use is well below pool_capacity (utilization ratio low, e.g. < 0.5) with no saturation trend during the alert window, which would rule out connection pool exhaustion as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 >= 0.5 and pool_max_in_use=5.0 hits pool_capacity=5.0, so the disconfirming condition is not met."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-013",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 shows resource contention consistent with concurrent duplicate-charge retries amplifying load"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 reflects resource contention, not a direct idempotency/duplicate-charge signal"
+      ],
+      "confidence": 0.45,
+      "status": "active",
+      "quoted_disconfirming_if": "No duplicate-charge or idempotency-conflict errors appear and pool/DB metrics show no contention attributable to retry amplification during the alert window, which would rule out a race condition on idempotency as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 shows saturation but does not by itself confirm or rule out idempotency race conditions; no duplicate-charge signal in this observation."
+    },
+    {
+      "iteration": 1,
+      "hypothesis_id": "SM-015",
+      "evidence_for": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 indicates DB-side contention that could stem from slow queries holding connections"
+      ],
+      "evidence_against": [
+        "[req-inc-2e594a22-1:pool_utilization_ratio] = 1.0 is a pool-level signal, not a query-plan or index signal"
+      ],
+      "confidence": 0.45,
+      "status": "active",
+      "quoted_disconfirming_if": "Query latency metrics show fast per-query execution with no N+1 query count growth and no slow-query evidence during the alert window, which would rule out missing index / N+1 as the cause of the p99 latency spike.",
+      "disconfirming_condition_met": false,
+      "disconfirming_justification": "pool_utilization_ratio=1.0 indicates DB-side contention but this observation contains no query-plan or index metrics to rule out missing index / N+1."
+    }
+  ],
+  "remediation": null,
+  "timings": {
+    "detect": 60.0,
+    "diagnose": 25.11686134338379,
+    "total": 85.11686134338379
+  },
+  "usage": {
+    "prompt_tokens": 13237,
+    "completion_tokens": 4153,
+    "total_tokens": 17390
+  }
+}

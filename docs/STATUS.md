@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-11-15
+Last updated: 2026-10-19
 
 ## Done
 - Synopsis drafted (needs alignment with DECISIONS.md, do not keep rewriting it)
@@ -206,17 +206,6 @@ Last updated: 2026-11-15
   - Pinned `litellm==1.105.1` and `mcp==1.28.1`, installed Remediator test dependencies, added `git clean -fd` to avoid untracked test accumulation.
   - Test suite expanded to 180 tests (`pytest tests/` passing 100%).
 
-- Step 11 completed (Cloud Deployment on GCP & Local Environment Setup):
-  - Created automated GCP VM bootstrap script `scripts/setup_gcp_vm.sh` with Docker CE installation, UFW firewall configuration (allowing ports 22 and 8050 only), Compose initialization, and healthcheck polling.
-  - Added comprehensive GCP deployment documentation `docs/08-GCP-DEPLOYMENT.md` detailing architecture, `e2-standard-4` sizing recommendation, VPC firewall rules, `gcloud` and Cloud Console setup steps, live demo workflow, and resource management.
-  - Resolved Decision 3 (Cloud provider & VM sizing) in `docs/DECISIONS.md`.
-  - Added cross-platform environment marker to `uvloop` in `requirements.txt` (`sys_platform != "win32"`) and added `docker>=7.0.0`.
-  - Setup local Python virtual environment (`.venv`), installed dependencies, created `.env` and `infra/.env` (gitignored).
-  - Built all 11 custom container images and verified all 17 containers running healthy simultaneously via Docker Compose.
-  - Fixed database schema in `infra/postgres_surveyops/init.sql` and `storage.py` (added `checkable_signal JSONB` column and removed unnecessary DDL from runtime queries).
-  - Verified full health check across all endpoints (Demo UI, API, Orders, Payment, Inventory, Auth, Runner, Remediator, Controller, Prometheus, Grafana).
-  - Executed full test suite locally: 180 passed, 0 failed in 46.02s (`pytest tests/`).
-
 ## In progress
 - None
 
@@ -226,7 +215,7 @@ Last updated: 2026-11-15
 ## Next 3
 1. End-to-end evaluation benchmark across full fault catalog (5 faults).
 2. Incident report deterministic template fill refinement for silent/ambiguous faults.
-3. Viva preparation and final demonstration rehearsal.
+3. Final cloud deployment and Viva preparation.
 
 ## Consistency check findings (2026-10-14)
 See full report in session artifact. Short summary:

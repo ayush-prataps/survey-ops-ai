@@ -10,23 +10,33 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-base: #0b0f17;
-      --bg-surface: #111827;
-      --bg-surface-elevated: #1e293b;
-      --border-subtle: #334155;
-      --border-highlight: #475569;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --text-dim: #64748b;
+      /* True-neutral dark scale (no blue tint), in the spirit of a
+         Render-style product UI: near-black surfaces, hairline borders,
+         tight radii, and layered soft+tight shadows rather than glow. */
+      --bg-base: #0a0a0a;
+      --bg-surface: #121212;
+      --bg-surface-elevated: #1a1a1a;
+      --border-subtle: #262626;
+      --border-highlight: #3d3d3d;
+      --text-main: #fafafa;
+      --text-muted: #9c9c9c;
+      --text-dim: #6b6b6b;
 
       /* Visual distinction: blue for software, green for agents, red only for blocked/error */
-      --color-software: #2563eb;
-      --color-software-bg: #1e293b;
-      --color-agent: #059669;
-      --color-agent-bg: #064e3b;
-      --color-error: #dc2626;
-      --color-error-bg: #450a0a;
-      --color-warning: #d97706;
+      --color-software: #3b82f6;
+      --color-software-bg: #15202e;
+      --color-agent: #10b981;
+      --color-agent-bg: #0f2420;
+      --color-error: #ef4444;
+      --color-error-bg: #2a1212;
+      --color-warning: #f59e0b;
+
+      --radius-s: 4px;
+      --radius: 7px;
+      --radius-lg: 10px;
+      --ease-snap: cubic-bezier(0.16, 1, 0.3, 1);
+      --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 32px -12px rgba(0, 0, 0, 0.55);
+      --shadow-card-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -16px rgba(0, 0, 0, 0.65);
 
       --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
@@ -43,6 +53,7 @@
       font-family: var(--font-family);
       font-size: 14px;
       line-height: 1.5;
+      letter-spacing: -0.01em;
       display: flex;
       flex-direction: column;
       height: 100vh;
@@ -89,31 +100,57 @@
     header {
       background-color: var(--bg-surface);
       border-bottom: 1px solid var(--border-subtle);
-      padding: 10px 20px;
+      padding: 18px 32px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
+      gap: 24px;
       flex-shrink: 0;
+      box-shadow: var(--shadow-card);
+      z-index: 10;
+      min-height: 76px;
     }
 
     .brand-group {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 12px;
     }
 
-    .brand-title {
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, #2563eb, #059669);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
       font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .brand-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
       color: #ffffff;
+      line-height: 1.1;
     }
 
     .brand-subtitle {
-      font-size: 12px;
+      font-size: 11.5px;
       color: var(--text-muted);
-      font-weight: 400;
+      font-weight: 500;
+      line-height: 1.1;
     }
 
     .header-status-area {
@@ -142,29 +179,40 @@
       position: relative;
     }
 
-    /* Exactly 3 primary visible action buttons */
+    /* Exactly 3 primary visible action buttons. Fully pill-shaped, like a
+       Render CTA, rather than the boxy 6px-radius buttons dashboards
+       usually default to. */
     .btn {
       font-family: var(--font-family);
       font-size: 13px;
       font-weight: 600;
-      padding: 6px 14px;
-      border-radius: 4px;
+      letter-spacing: -0.005em;
+      padding: 8px 18px;
+      border-radius: 999px;
       cursor: pointer;
       border: 1px solid transparent;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      transition: background-color 0.15s ease, border-color 0.15s ease;
+      transition: background-color 0.15s var(--ease-snap), border-color 0.15s var(--ease-snap), transform 0.12s var(--ease-snap), box-shadow 0.15s var(--ease-snap);
+    }
+    .btn:active {
+      transform: scale(0.97);
+    }
+    .btn:not(.btn-menu):not(.btn-traces):hover {
+      transform: translateY(-1px);
     }
 
     .btn-inject {
       background-color: var(--color-software);
       border-color: #1d4ed8;
       color: #ffffff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 2px 6px rgba(37, 99, 235, 0.35);
     }
     .btn-inject:hover {
       background-color: #1d4ed8;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 10px rgba(37, 99, 235, 0.45);
     }
 
     .btn-reset {
@@ -180,9 +228,11 @@
       background-color: var(--color-agent);
       border-color: #047857;
       color: #ffffff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 2px 6px rgba(5, 150, 105, 0.35);
     }
     .btn-reveal:hover {
       background-color: #047857;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2), 0 4px 10px rgba(5, 150, 105, 0.45);
     }
 
     .btn-menu {
@@ -197,6 +247,32 @@
       border-color: var(--border-highlight);
     }
 
+    .header-divider {
+      width: 1px;
+      height: 22px;
+      background-color: var(--border-subtle);
+      margin: 0 2px;
+    }
+
+    .btn-traces {
+      background-color: transparent;
+      border-color: var(--border-subtle);
+      color: #c4b5fd;
+    }
+    .btn-traces:hover {
+      background-color: #2e1065;
+      border-color: #7c3aed;
+      color: #ede9fe;
+    }
+    .traces-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: #a78bfa;
+      margin-right: 7px;
+      box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
+    }
+
     /* ── Dropdown Menu for Replay / Kiosk ── */
     #menu-dropdown {
       display: none;
@@ -208,7 +284,7 @@
       background-color: var(--bg-surface);
       border: 1px solid var(--border-highlight);
       border-radius: 4px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow-card-lg);
       padding: 14px;
       z-index: 100;
     }
@@ -252,42 +328,83 @@
       margin-bottom: 6px;
     }
 
-    /* ── Live Mini-Strip ── */
+    /* ── Live Mini-Strip: a row of real stat cards, not a flat strip.
+       Label small/muted/uppercase on top, value large and bold below —
+       the "big confident number" pattern, not inline text. ── */
     #mini-strip {
-      background-color: var(--bg-surface-elevated);
+      background-color: var(--bg-base);
       border-bottom: 1px solid var(--border-subtle);
-      padding: 8px 20px;
+      padding: 20px 32px;
       display: flex;
-      align-items: center;
-      gap: 28px;
+      align-items: stretch;
+      gap: 16px;
       flex-shrink: 0;
       font-size: 13px;
     }
 
     .strip-item {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 6px;
+      padding: 16px 22px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      transition: border-color 0.2s var(--ease-snap), transform 0.2s var(--ease-snap);
+      min-width: 150px;
+    }
+
+    .strip-item:hover {
+      border-color: var(--border-highlight);
+      transform: translateY(-1px);
+    }
+
+    .strip-item-wide {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .strip-value-text {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
     }
 
     .strip-label {
-      color: var(--text-muted);
-      font-weight: 500;
+      color: var(--text-dim);
+      font-weight: 600;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
 
     .strip-value {
-      font-weight: 600;
+      font-weight: 800;
+      font-size: 32px;
+      letter-spacing: -0.03em;
       color: var(--text-main);
       font-variant-numeric: tabular-nums;
+      line-height: 1.1;
     }
 
     .status-badge {
-      padding: 2px 8px;
-      border-radius: 3px;
+      padding: 3px 9px;
+      border-radius: 4px;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+    }
+
+    .status-badge {
+      transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
     }
 
     .status-normal {
@@ -296,10 +413,16 @@
       border: 1px solid #059669;
     }
 
+    @keyframes badge-firing-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+      50%      { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+    }
+
     .status-firing {
       background-color: var(--color-error-bg);
       color: #fca5a5;
       border: 1px solid var(--color-error);
+      animation: badge-firing-pulse 1.4s ease-out infinite;
     }
 
     .status-pending {
@@ -327,19 +450,104 @@
     #svg-wrapper {
       flex: 1;
       position: relative;
-      background-color: #090d16;
-      overflow: auto;
+      background-color: #070707;
+      /* Dot grid on top, a soft Render-style violet/emerald aurora wash
+         underneath it, both over the near-black base. */
+      background-image:
+        radial-gradient(circle at 1px 1px, #1f1f1f 1px, transparent 0),
+        radial-gradient(ellipse 820px 480px at 12% -8%, rgba(124, 58, 237, 0.14), transparent 62%),
+        radial-gradient(ellipse 640px 420px at 100% 100%, rgba(16, 185, 129, 0.08), transparent 62%);
+      background-size: 28px 28px, auto, auto;
+      background-repeat: repeat, no-repeat, no-repeat;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: 20px 24px 64px;
     }
 
     #arch-svg {
       width: 100%;
       height: 100%;
-      min-width: 900px;
-      min-height: 520px;
+      max-width: 100%;
+      max-height: 100%;
       display: block;
+    }
+
+    /* ── System status banner above the architecture map ── */
+    #status-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border-subtle);
+      background:
+        linear-gradient(90deg, rgba(16, 185, 129, 0.10), transparent 55%),
+        var(--bg-base);
+      flex-shrink: 0;
+      transition: background 0.4s var(--ease-snap);
+    }
+
+    .banner-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--color-agent);
+      box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.16), 0 0 18px rgba(16, 185, 129, 0.55);
+      flex-shrink: 0;
+    }
+
+    .banner-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .banner-title {
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+
+    .banner-sub {
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    .banner-section-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .banner-live { display: none; }
+    body.incident-active .banner-idle { display: none; }
+    body.incident-active .banner-live { display: inline; }
+
+    @keyframes banner-dot-pulse {
+      0%, 100% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25), 0 0 14px rgba(239, 68, 68, 0.6); }
+      50%      { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0.05), 0 0 22px rgba(239, 68, 68, 0.9); }
+    }
+
+    body.incident-active #status-banner {
+      background:
+        linear-gradient(90deg, rgba(239, 68, 68, 0.14), transparent 60%),
+        var(--bg-base);
+    }
+
+    body.incident-active .banner-dot {
+      background: var(--color-error);
+      animation: banner-dot-pulse 1.3s ease-in-out infinite;
     }
 
     /* Diagnostician Iteration Table below map */
@@ -349,7 +557,7 @@
       border-top: 1px solid var(--border-subtle);
       max-height: 220px;
       overflow-y: auto;
-      padding: 10px 16px;
+      padding: 14px 16px;
       flex-shrink: 0;
     }
 
@@ -358,73 +566,123 @@
     }
 
     .iteration-header {
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
       color: var(--text-muted);
       text-transform: uppercase;
-      margin-bottom: 6px;
+      margin-bottom: 10px;
       display: flex;
       justify-content: space-between;
     }
 
+    /* Clean data table: row dividers only, zebra striping, no grid lines,
+       rounded container — not the harsh every-cell-boxed spreadsheet look. */
     .iteration-table {
       width: 100%;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       font-size: 12px;
       text-align: left;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      overflow: hidden;
     }
 
     .iteration-table th {
       background-color: var(--bg-surface-elevated);
-      color: var(--text-muted);
-      padding: 6px 10px;
-      border: 1px solid var(--border-subtle);
+      color: var(--text-dim);
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
       font-weight: 600;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
     .iteration-table td {
-      padding: 6px 10px;
-      border: 1px solid var(--border-subtle);
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
       color: var(--text-main);
       vertical-align: top;
     }
 
-    /* Right: Narration, Inspector & Event Log */
+    .iteration-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .iteration-table tbody tr:nth-child(even) {
+      background-color: rgba(255, 255, 255, 0.015);
+    }
+
+    .iteration-table tbody tr:hover {
+      background-color: rgba(255, 255, 255, 0.035);
+    }
+
+    /* Right: Narration, Inspector & Event Log. Each section is a distinct
+       floating card with its own radius/shadow and a gap of real
+       background between them, rather than flush-stacked bordered
+       blocks that read as one undifferentiated column. */
     #right-pane {
-      width: 420px;
+      width: 460px;
       display: flex;
       flex-direction: column;
-      background-color: var(--bg-surface);
+      gap: 18px;
+      padding: 18px;
+      background-color: var(--bg-base);
+      background-image: radial-gradient(ellipse 500px 700px at 100% 0%, rgba(124, 58, 237, 0.12), transparent 55%);
+      background-repeat: no-repeat;
       overflow: hidden;
       flex-shrink: 0;
     }
 
     /* Phase Narration */
     #phase-narration {
-      background-color: #0d131f;
-      border-bottom: 1px solid var(--border-subtle);
-      padding: 12px 16px;
-      font-size: 13px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      padding: 20px 22px;
+      font-size: 14.5px;
       font-weight: 600;
+      letter-spacing: -0.01em;
       color: #93c5fd;
-      line-height: 1.4;
+      line-height: 1.5;
       flex-shrink: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      transition: color 0.2s ease;
+    }
+
+    #phase-narration::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #3b82f6;
+      margin-top: 5px;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18);
     }
 
     /* Node Inspector */
     #inspector-panel {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border-subtle);
+      padding: 20px 22px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
       background-color: var(--bg-surface);
       overflow-y: auto;
       flex-shrink: 0;
-      max-height: 250px;
+      max-height: 260px;
     }
 
     .inspector-title {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 700;
-      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
       color: #ffffff;
       display: flex;
       align-items: center;
@@ -453,8 +711,10 @@
 
     .meta-row {
       font-size: 12px;
-      margin-bottom: 4px;
-      line-height: 1.4;
+      margin-bottom: 6px;
+      line-height: 1.5;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
 
     .meta-label {
@@ -499,15 +759,20 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      background-color: #090d16;
+      background-color: #070707;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
     }
 
     .log-header {
-      padding: 8px 16px;
+      padding: 14px 20px;
       background-color: var(--bg-surface);
       border-bottom: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
       color: var(--text-muted);
       display: flex;
@@ -524,12 +789,22 @@
       line-height: 1.5;
     }
 
+    @keyframes log-entry-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
     .log-entry {
       display: flex;
       gap: 8px;
       margin-bottom: 4px;
-      border-bottom: 1px solid #161e2e;
+      border-bottom: 1px solid #262626;
       padding-bottom: 2px;
+      animation: log-entry-in 0.25s ease-out;
+    }
+
+    .log-entry.no-anim {
+      animation: none;
     }
 
     .log-ts {
@@ -557,175 +832,307 @@
       word-break: break-all;
     }
 
-    /* ── SVG Architecture Map Elements ── */
+    /* Icon glyph prefixing every event row, and inline monospace "chips"
+       for paths/key=values inside the text — the Render event-feed look. */
+    .log-icon {
+      flex-shrink: 0;
+      width: 14px;
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .icon-success { color: #34d399; }
+    .icon-error   { color: #f87171; }
+    .icon-warn    { color: #fbbf24; }
+    .icon-software{ color: #60a5fa; }
+    .icon-agent   { color: #34d399; }
+    .icon-muted   { color: var(--text-dim); }
+
+    .inline-chip {
+      display: inline-block;
+      background-color: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      padding: 0 5px;
+      margin: 0 1px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      color: #d4d4d4;
+    }
+
+    /* ── SVG Architecture Map ──
+       A defined, presentation-grade system diagram: solid-bordered zones
+       with a title header, card-style nodes with a colored accent per
+       component kind, and right-angle connectors colored by protocol.
+       Nothing is ever drawn on a diagonal. */
     .zone-rect {
-      stroke-width: 1.5;
-      stroke-dasharray: 4, 4;
-      rx: 6;
-      ry: 6;
+      fill: rgba(255, 255, 255, 0.018);
+      stroke: #262626;
+      stroke-width: 1;
     }
 
-    .zone-label {
+    .zone-header-bar {
+      fill: rgba(255, 255, 255, 0.025);
+    }
+
+    .zone-title {
       font-family: var(--font-family);
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
-      fill: #64748b;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
+      letter-spacing: -0.01em;
+      fill: #e5e5e5;
     }
 
-    /* Protocol Edges */
-    .edge-line {
-      stroke: #475569;
-      stroke-width: 1.5;
-      fill: none;
-      transition: stroke 0.2s, stroke-width 0.2s;
-    }
-
-    .edge-label {
-      font-family: var(--font-family);
-      font-size: 10px;
+    .zone-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
       font-weight: 500;
-      fill: #94a3b8;
-      text-anchor: middle;
+      fill: #6b6b6b;
     }
 
+    /* Connectors */
+    .edge-line {
+      fill: none;
+      stroke-width: 1.6;
+      stroke-linejoin: round;
+      opacity: 0.85;
+      transition: opacity 0.2s var(--ease-snap), stroke-width 0.2s var(--ease-snap);
+    }
+
+    .edge-hit {
+      fill: none;
+      stroke: transparent;
+      stroke-width: 12;
+      cursor: help;
+    }
+
+    .edge-group:hover .edge-line,
+    .edge-line.edge-visible {
+      opacity: 1;
+      stroke-width: 2.4;
+    }
+
+    .edge-chip rect {
+      fill: #0d0d0d;
+      stroke-width: 1;
+    }
+
+    .edge-chip text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      font-weight: 600;
+      text-anchor: middle;
+      dominant-baseline: central;
+      letter-spacing: 0.02em;
+    }
+
+    @keyframes edge-flow {
+      to { stroke-dashoffset: -20; }
+    }
+
+    /* Live activity: the connector lights up and visibly flows. */
     .edge-active {
       stroke: #38bdf8 !important;
-      stroke-width: 2.5 !important;
+      stroke-width: 2.8 !important;
+      stroke-dasharray: 7, 5 !important;
+      opacity: 1 !important;
+      animation: edge-flow 0.45s linear infinite;
+      filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.8));
     }
 
-    /* Forbidden Edges */
-    .edge-forbidden {
-      stroke: #dc2626;
-      stroke-width: 1.5;
-      stroke-dasharray: 5, 4;
-      fill: none;
+    /* Forbidden-path badges pinned to the restricted node's corner */
+    .forbidden-marker {
+      cursor: help;
     }
 
     .forbidden-x-box {
-      fill: #450a0a;
-      stroke: #dc2626;
-      stroke-width: 1.5;
+      fill: #2a1212;
+      stroke: #ef4444;
+      stroke-width: 1.25;
+      transition: fill 0.15s ease, stroke 0.15s ease;
+    }
+
+    .forbidden-marker:hover .forbidden-x-box {
+      fill: #7f1d1d;
+      stroke: #fca5a5;
     }
 
     .forbidden-x-text {
       font-family: var(--font-family);
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 800;
       fill: #fca5a5;
       text-anchor: middle;
       dominant-baseline: central;
+      pointer-events: none;
     }
 
-    /* Nodes */
+    /* Nodes: dark card + colored accent bar (color set per node via --accent) */
     .arch-node {
       cursor: pointer;
     }
 
-    .node-software-rect {
-      fill: #1e293b;
-      stroke: #3b82f6;
-      stroke-width: 1.5;
-      rx: 5;
-      ry: 5;
-      transition: stroke 0.2s, stroke-width 0.2s, fill 0.2s;
+    .node-card {
+      fill: #141414;
+      stroke: #2e2e2e;
+      stroke-width: 1;
+      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+      transition: stroke 0.2s var(--ease-snap), fill 0.2s var(--ease-snap);
     }
 
-    .node-agent-rect {
-      fill: #064e3b;
-      stroke: #10b981;
-      stroke-width: 1.5;
-      rx: 5;
-      ry: 5;
-      transition: stroke 0.2s, stroke-width 0.2s, fill 0.2s;
+    .node-accent {
+      fill: var(--accent);
+    }
+
+    .node-dot {
+      fill: var(--accent);
     }
 
     .node-title-text {
       font-family: var(--font-family);
-      font-size: 12px;
-      font-weight: 600;
-      fill: #ffffff;
-      text-anchor: middle;
+      font-size: 12.5px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      fill: #fafafa;
       pointer-events: none;
     }
 
     .node-sub-text {
-      font-family: var(--font-family);
-      font-size: 9px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
       font-weight: 500;
-      fill: #94a3b8;
-      text-anchor: middle;
+      fill: #8a8a8a;
       pointer-events: none;
     }
 
-    /* Node States */
-    .arch-node:hover .node-software-rect {
-      stroke: #60a5fa;
-      stroke-width: 2;
-    }
-    .arch-node:hover .node-agent-rect {
-      stroke: #34d399;
-      stroke-width: 2;
+    .arch-node:hover .node-card {
+      stroke: var(--accent);
+      fill: #181818;
     }
 
-    .node-active .node-software-rect {
-      stroke: #93c5fd !important;
-      stroke-width: 3 !important;
-      fill: #1d4ed8 !important;
+    @keyframes node-pulse {
+      0%   { stroke: var(--accent); stroke-width: 1; filter: drop-shadow(0 0 0 transparent); }
+      30%  { stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 0 14px var(--accent)); }
+      100% { stroke: #2e2e2e; stroke-width: 1; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45)); }
     }
 
-    .node-active .node-agent-rect {
-      stroke: #6ee7b7 !important;
-      stroke-width: 3 !important;
-      fill: #047857 !important;
+    .node-active .node-card {
+      animation: node-pulse 2.5s ease-out;
     }
 
-    .node-error .node-software-rect,
-    .node-error .node-agent-rect {
-      stroke: #ef4444 !important;
-      stroke-width: 3 !important;
-      fill: #7f1d1d !important;
+    @keyframes node-error-flash {
+      0%, 100% { stroke: #ef4444; stroke-width: 2.5; fill: #2a1212; }
+      50%      { stroke: #fca5a5; stroke-width: 3; fill: #3b1515; }
     }
 
-    .node-selected .node-software-rect {
+    .node-error .node-card {
+      animation: node-error-flash 0.9s ease-in-out infinite;
+    }
+
+    .node-selected .node-card {
       stroke: #ffffff !important;
-      stroke-width: 2.5 !important;
+      stroke-width: 2 !important;
     }
-    .node-selected .node-agent-rect {
-      stroke: #ffffff !important;
-      stroke-width: 2.5 !important;
+
+    /* Legend overlay */
+    #arch-legend {
+      position: absolute;
+      right: 18px;
+      bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 9px 14px;
+      background: rgba(13, 13, 13, 0.85);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--text-muted);
+      backdrop-filter: blur(6px);
+      z-index: 4;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .legend-swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+    }
+
+    .legend-line {
+      width: 16px;
+      height: 2px;
+      border-radius: 2px;
+    }
+
+
+    /* ── Responsive: keep the map the hero on smaller screens ── */
+    @media (max-width: 1300px) {
+      #right-pane { width: 380px; }
+      .strip-value { font-size: 26px; }
+    }
+    @media (max-width: 1050px) {
+      body { overflow: auto; height: auto; min-height: 100vh; }
+      #main-container { flex-direction: column; overflow: visible; }
+      #map-pane { min-height: 620px; border-right: none; }
+      #right-pane { width: 100%; max-height: none; }
+      #log-container { min-height: 320px; }
+      #mini-strip { flex-wrap: wrap; }
+      .banner-section-title { display: none; }
+      #arch-legend { position: static; margin: 0 16px 12px; border-radius: var(--radius-lg); }
+      #svg-wrapper { flex-direction: column; padding-bottom: 12px; }
     }
 
     /* ── Reveal Modal ── */
     #reveal-modal {
-      display: none;
+      display: flex;
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background-color: rgba(0, 0, 0, 0.75);
+      background-color: rgba(0, 0, 0, 0);
       z-index: 2000;
       align-items: center;
       justify-content: center;
       padding: 20px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.2s ease, background-color 0.2s ease, visibility 0s linear 0.2s;
     }
 
     #reveal-modal.show {
-      display: flex;
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      background-color: rgba(0, 0, 0, 0.75);
+      transition: opacity 0.2s ease, background-color 0.2s ease, visibility 0s linear 0s;
+    }
+
+    #reveal-modal.show .modal-box {
+      transform: scale(1) translateY(0);
     }
 
     .modal-box {
       background-color: var(--bg-surface);
       border: 1px solid var(--border-highlight);
-      border-radius: 6px;
+      border-radius: 10px;
       width: 700px;
       max-width: 100%;
       max-height: 90vh;
+      transform: scale(0.96) translateY(6px);
+      transition: transform 0.22s var(--ease-snap);
       display: flex;
       flex-direction: column;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+      box-shadow: var(--shadow-card-lg);
     }
 
     .modal-header {
@@ -739,6 +1146,7 @@
     .modal-title {
       font-size: 16px;
       font-weight: 700;
+      letter-spacing: -0.015em;
       color: #ffffff;
     }
 
@@ -781,7 +1189,7 @@
     }
 
     .diff-block {
-      background-color: #090d16;
+      background-color: #070707;
       border: 1px solid var(--border-subtle);
       padding: 10px;
       font-family: 'JetBrains Mono', monospace;
@@ -807,8 +1215,11 @@
   <!-- Top Header Navigation -->
   <header>
     <div class="brand-group">
-      <div class="brand-title">SURVEYOPS</div>
-      <div class="brand-subtitle">Autonomous Multi-Agent Failure Diagnosis</div>
+      <div class="brand-mark">S</div>
+      <div class="brand-text">
+        <div class="brand-title">SURVEYOPS</div>
+        <div class="brand-subtitle">Autonomous Multi-Agent Failure Diagnosis</div>
+      </div>
     </div>
 
     <div class="header-status-area">
@@ -820,6 +1231,13 @@
       <button class="btn btn-inject" id="btn-inject" onclick="handleInject()">Inject</button>
       <button class="btn btn-reset" id="btn-reset" onclick="handleReset()">Reset</button>
       <button class="btn btn-reveal" id="btn-reveal" onclick="handleReveal()">Reveal</button>
+
+      <div class="header-divider"></div>
+
+      <!-- Observability: opens the self-hosted Langfuse trace viewer -->
+      <a class="btn btn-traces" id="btn-traces" href="http://localhost:3001/project/surveyops-project/traces?dateRange=All+time" target="_blank" rel="noopener">
+        <span class="traces-dot"></span>Traces
+      </a>
 
       <!-- Secondary menu toggle for Replay / Kiosk mode -->
       <button class="btn btn-menu" id="btn-menu" onclick="toggleMenu()">Options</button>
@@ -858,20 +1276,20 @@
   <!-- Live Mini-Strip -->
   <div id="mini-strip">
     <div class="strip-item">
-      <span class="strip-label">Payment p99:</span>
+      <span class="strip-label">Payment p99</span>
       <span class="strip-value" id="strip-p99">0.0 ms</span>
     </div>
     <div class="strip-item">
-      <span class="strip-label">Payment DB Pool:</span>
+      <span class="strip-label">Payment DB Pool</span>
       <span class="strip-value" id="strip-pool">0 / 5</span>
     </div>
     <div class="strip-item">
-      <span class="strip-label">Prometheus Alert:</span>
+      <span class="strip-label">Prometheus Alert</span>
       <span class="status-badge status-normal" id="strip-alert">NORMAL</span>
     </div>
-    <div class="strip-item">
-      <span class="strip-label">Active Incident:</span>
-      <span class="strip-value" id="strip-incident" style="color: #93c5fd;">None</span>
+    <div class="strip-item strip-item-wide">
+      <span class="strip-label">Active Incident</span>
+      <span class="strip-value strip-value-text" id="strip-incident" style="color: #93c5fd;">None</span>
     </div>
   </div>
 
@@ -880,8 +1298,32 @@
     
     <!-- Left Pane: SVG Architecture Map & Iteration Table -->
     <div id="map-pane">
+      <!-- System status banner: calm green at rest, red while an incident
+           is being diagnosed (body.incident-active). -->
+      <div id="status-banner">
+        <div class="banner-dot"></div>
+        <div class="banner-text">
+          <span class="banner-title banner-idle">All systems nominal</span>
+          <span class="banner-title banner-live">Incident under autonomous investigation</span>
+          <span class="banner-sub banner-idle">Diagnosis takes over automatically the moment an alert fires.</span>
+          <span class="banner-sub banner-live">Live signal flow is highlighted on the architecture map below.</span>
+        </div>
+        <div class="banner-section-title">System Architecture</div>
+      </div>
+
       <div id="svg-wrapper">
-        <svg id="arch-svg" viewBox="0 0 1080 790">
+        <div id="arch-legend">
+          <span class="legend-item"><span class="legend-swatch" style="background:#3b82f6"></span>Service</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#10b981"></span>Agent</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#a78bfa"></span>Data</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span>Monitoring</span>
+          <span class="legend-item"><span class="legend-line" style="background:#10b981"></span>A2A</span>
+          <span class="legend-item"><span class="legend-line" style="background:#a78bfa"></span>MCP</span>
+          <span class="legend-item"><span class="legend-line" style="background:#64748b"></span>HTTP / TCP</span>
+          <span class="legend-item"><span class="legend-line" style="background:#f59e0b"></span>Webhook</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#2a1212;border:1px solid #ef4444"></span>Forbidden path</span>
+        </div>
+        <svg id="arch-svg" viewBox="0 0 1200 680" preserveAspectRatio="xMidYMid meet">
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b" />
@@ -988,7 +1430,7 @@
     // ── Load Architecture Config & Render SVG ──
     async function loadArchitectureConfig() {
       try {
-        const resp = await fetch('/static/architecture_config.json');
+        const resp = await fetch('/static/architecture_config.json', { cache: 'no-store' });
         if (!resp.ok) throw new Error('Failed to load architecture_config.json');
         archConfig = await resp.json();
         renderArchitecture(archConfig);
@@ -997,7 +1439,79 @@
       }
     }
 
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+
+    // Accent color per component kind, and line color per protocol. Kept
+    // in one place so the map, the legend and the node cards always agree.
+    const KIND_COLORS = {
+      service: '#3b82f6',
+      agent: '#10b981',
+      data: '#a78bfa',
+      monitor: '#f59e0b',
+      control: '#94a3b8',
+      external: '#f472b6',
+    };
+    const PROTOCOL_COLORS = {
+      HTTP: '#64748b',
+      TCP: '#64748b',
+      webhook: '#f59e0b',
+      A2A: '#10b981',
+      MCP: '#a78bfa',
+    };
+
+    function svgEl(tag, attrs = {}) {
+      const el = document.createElementNS(SVG_NS, tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      return el;
+    }
+
+    // Right-angle connector between two node cards (React-Flow-style
+    // "smoothstep"): leave from the side facing the target, run straight,
+    // turn once at the midpoint with a rounded corner. Never diagonal.
+    function orthogonalPath(a, b) {
+      const acx = a.x + a.width / 2, acy = a.y + a.height / 2;
+      const bcx = b.x + b.width / 2, bcy = b.y + b.height / 2;
+      const dx = bcx - acx, dy = bcy - acy;
+      let pts;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        const sx = dx > 0 ? a.x + a.width : a.x;
+        const ex = dx > 0 ? b.x : b.x + b.width;
+        const midX = (sx + ex) / 2;
+        pts = [[sx, acy], [midX, acy], [midX, bcy], [ex, bcy]];
+      } else {
+        const sy = dy > 0 ? a.y + a.height : a.y;
+        const ey = dy > 0 ? b.y : b.y + b.height;
+        const midY = (sy + ey) / 2;
+        pts = [[acx, sy], [acx, midY], [bcx, midY], [bcx, ey]];
+      }
+      // Drop zero-length segments so straight runs stay perfectly straight.
+      pts = pts.filter((p, i) => i === 0 || p[0] !== pts[i - 1][0] || p[1] !== pts[i - 1][1]);
+
+      const r = 8;
+      let d = `M ${pts[0][0]} ${pts[0][1]}`;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const [px, py] = pts[i - 1], [cx, cy] = pts[i], [nx, ny] = pts[i + 1];
+        const inLen = Math.hypot(cx - px, cy - py), outLen = Math.hypot(nx - cx, ny - cy);
+        const rr = Math.min(r, inLen / 2, outLen / 2);
+        const ix = cx - ((cx - px) / (inLen || 1)) * rr, iy = cy - ((cy - py) / (inLen || 1)) * rr;
+        const ox = cx + ((nx - cx) / (outLen || 1)) * rr, oy = cy + ((ny - cy) / (outLen || 1)) * rr;
+        d += ` L ${ix} ${iy} Q ${cx} ${cy} ${ox} ${oy}`;
+      }
+      const last = pts[pts.length - 1];
+      d += ` L ${last[0]} ${last[1]}`;
+
+      // Chip sits on the midpoint of the longest segment.
+      let best = 0, bestLen = -1;
+      for (let i = 1; i < pts.length; i++) {
+        const len = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        if (len > bestLen) { bestLen = len; best = i; }
+      }
+      const mid = [(pts[best][0] + pts[best - 1][0]) / 2, (pts[best][1] + pts[best - 1][1]) / 2];
+      return { d, mid, segLen: bestLen };
+    }
+
     function renderArchitecture(cfg) {
+      const svg = document.getElementById('arch-svg');
       const zonesG = document.getElementById('zones-group');
       const edgesG = document.getElementById('edges-group');
       const fEdgesG = document.getElementById('forbidden-edges-group');
@@ -1008,142 +1522,119 @@
       fEdgesG.innerHTML = '';
       nodesG.innerHTML = '';
 
+      // Fit the viewBox to the laid-out content so the map fills its pane.
+      let maxX = 0, maxY = 0;
+      cfg.zones.forEach(z => { maxX = Math.max(maxX, z.x + z.width); maxY = Math.max(maxY, z.y + z.height); });
+      svg.setAttribute('viewBox', `0 0 ${maxX + 20} ${maxY + 20}`);
+
+      // One arrowhead marker per protocol color.
+      const defs = svg.querySelector('defs');
+      defs.querySelectorAll('.proto-marker').forEach(m => m.remove());
+      for (const [proto, color] of Object.entries(PROTOCOL_COLORS)) {
+        const marker = svgEl('marker', {
+          id: `arrow-${proto}`, class: 'proto-marker', viewBox: '0 0 10 10', refX: '9', refY: '5',
+          markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse',
+        });
+        marker.appendChild(svgEl('path', { d: 'M 0 1.5 L 9 5 L 0 8.5 z', fill: color }));
+        defs.appendChild(marker);
+      }
+
       const nodeMap = new Map();
       cfg.nodes.forEach(n => nodeMap.set(n.id, n));
 
-      // 1. Render Zones
+      // 1. Zones: solid container + header strip with title and network tag
       cfg.zones.forEach(z => {
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', z.x);
-        rect.setAttribute('y', z.y);
-        rect.setAttribute('width', z.width);
-        rect.setAttribute('height', z.height);
-        rect.setAttribute('fill', z.color);
-        rect.setAttribute('stroke', z.stroke);
-        rect.setAttribute('class', 'zone-rect');
-        zonesG.appendChild(rect);
-
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', z.x + 14);
-        text.setAttribute('y', z.y + 22);
-        text.setAttribute('class', 'zone-label');
-        text.textContent = z.label;
-        zonesG.appendChild(text);
+        zonesG.appendChild(svgEl('rect', {
+          x: z.x, y: z.y, width: z.width, height: z.height, rx: 12, ry: 12, class: 'zone-rect',
+        }));
+        const title = svgEl('text', { x: z.x + 16, y: z.y + 24, class: 'zone-title' });
+        title.textContent = z.title || z.label.split(' (')[0];
+        const tip = svgEl('title');
+        tip.textContent = z.label;
+        title.appendChild(tip);
+        zonesG.appendChild(title);
+        const tag = svgEl('text', { x: z.x + z.width - 14, y: z.y + 24, class: 'zone-tag', 'text-anchor': 'end' });
+        tag.textContent = z.label.split(' (')[0];
+        zonesG.appendChild(tag);
       });
 
-      // 2. Render Allowed Edges
+      // 2. Connectors: always visible, right-angle routed, colored by protocol
       cfg.edges.forEach(e => {
-        const fromN = nodeMap.get(e.from);
-        const toN = nodeMap.get(e.to);
-        if (!fromN || !toN) return;
+        const a = nodeMap.get(e.from), b = nodeMap.get(e.to);
+        if (!a || !b) return;
+        const color = PROTOCOL_COLORS[e.protocol] || '#64748b';
+        const { d, mid, segLen } = orthogonalPath(a, b);
 
-        const x1 = fromN.x + fromN.width / 2;
-        const y1 = fromN.y + fromN.height / 2;
-        const x2 = toN.x + toN.width / 2;
-        const y2 = toN.y + toN.height / 2;
+        const g = svgEl('g', { class: 'edge-group' });
+        const tip = svgEl('title');
+        tip.textContent = `${e.protocol ? e.protocol + ' · ' : ''}${e.label || ''}`;
+        g.appendChild(tip);
 
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        path.setAttribute('x1', x1);
-        path.setAttribute('y1', y1);
-        path.setAttribute('x2', x2);
-        path.setAttribute('y2', y2);
-        path.setAttribute('class', 'edge-line');
-        path.setAttribute('id', `edge-${e.id}`);
-        path.setAttribute('marker-end', 'url(#arrow)');
-        edgesG.appendChild(path);
+        g.appendChild(svgEl('path', { d, class: 'edge-hit' }));
+        g.appendChild(svgEl('path', {
+          d, class: 'edge-line', id: `edge-${e.id}`, stroke: color,
+          'marker-end': `url(#arrow-${e.protocol in PROTOCOL_COLORS ? e.protocol : 'HTTP'})`,
+          'data-from': e.from, 'data-to': e.to,
+        }));
 
-        if (e.label) {
-          const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          lbl.setAttribute('x', (x1 + x2) / 2);
-          lbl.setAttribute('y', (y1 + y2) / 2 - 4);
-          lbl.setAttribute('class', 'edge-label');
-          lbl.textContent = e.label;
-          edgesG.appendChild(lbl);
+        // Protocol chip on longer runs only, so short hops stay clean.
+        if (e.protocol && segLen >= 44) {
+          const label = e.protocol.toUpperCase();
+          const w = label.length * 6.2 + 12;
+          const chip = svgEl('g', { class: 'edge-chip' });
+          chip.appendChild(svgEl('rect', { x: mid[0] - w / 2, y: mid[1] - 8, width: w, height: 16, rx: 8, ry: 8, stroke: color }));
+          const t = svgEl('text', { x: mid[0], y: mid[1] + 0.5, fill: color });
+          t.textContent = label;
+          chip.appendChild(t);
+          g.appendChild(chip);
         }
+        edgesG.appendChild(g);
       });
 
-      // 3. Render Forbidden Paths (dashed red with bold 'X')
-      cfg.forbidden_edges.forEach(fe => {
-        const fromN = nodeMap.get(fe.from);
-        const toN = nodeMap.get(fe.to);
-        if (!fromN || !toN) return;
-
-        const x1 = fromN.x + fromN.width / 2;
-        const y1 = fromN.y + fromN.height / 2;
-        const x2 = toN.x + toN.width / 2;
-        const y2 = toN.y + toN.height / 2;
-
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', x1);
-        line.setAttribute('y1', y1);
-        line.setAttribute('x2', x2);
-        line.setAttribute('y2', y2);
-        line.setAttribute('class', 'edge-forbidden');
-        line.setAttribute('id', `fe-${fe.id}`);
-        fEdgesG.appendChild(line);
-
-        // Midpoint marker 'X'
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
-
-        const xBox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        xBox.setAttribute('x', mx - 9);
-        xBox.setAttribute('y', my - 9);
-        xBox.setAttribute('width', 18);
-        xBox.setAttribute('height', 18);
-        xBox.setAttribute('rx', 3);
-        xBox.setAttribute('class', 'forbidden-x-box');
-        fEdgesG.appendChild(xBox);
-
-        const xTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        xTxt.setAttribute('x', mx);
-        xTxt.setAttribute('y', my);
-        xTxt.setAttribute('class', 'forbidden-x-text');
-        xTxt.textContent = 'X';
-        fEdgesG.appendChild(xTxt);
-
-        if (fe.label) {
-          const flbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          flbl.setAttribute('x', mx);
-          flbl.setAttribute('y', my + 18);
-          flbl.setAttribute('class', 'edge-label');
-          flbl.setAttribute('fill', '#ef4444');
-          flbl.textContent = fe.label;
-          fEdgesG.appendChild(flbl);
-        }
-      });
-
-      // 4. Render Nodes
+      // 3. Nodes: card + accent bar + status dot + title + framework
       cfg.nodes.forEach(n => {
-        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', `arch-node node-${n.category}`);
-        g.setAttribute('id', `node-${n.id}`);
-        g.setAttribute('data-id', n.id);
+        const accent = KIND_COLORS[n.kind] || (n.category === 'agent' ? KIND_COLORS.agent : KIND_COLORS.service);
+        const g = svgEl('g', {
+          class: `arch-node node-${n.category}`, id: `node-${n.id}`, 'data-id': n.id, style: `--accent: ${accent}`,
+        });
         g.addEventListener('click', () => selectNode(n.id));
+        g.addEventListener('mouseenter', () => setNodeEdgesVisible(n.id, true));
+        g.addEventListener('mouseleave', () => setNodeEdgesVisible(n.id, false));
 
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', n.x);
-        rect.setAttribute('y', n.y);
-        rect.setAttribute('width', n.width);
-        rect.setAttribute('height', n.height);
-        rect.setAttribute('class', n.category === 'agent' ? 'node-agent-rect' : 'node-software-rect');
-        g.appendChild(rect);
+        g.appendChild(svgEl('rect', { x: n.x, y: n.y, width: n.width, height: n.height, rx: 9, ry: 9, class: 'node-card' }));
+        g.appendChild(svgEl('rect', { x: n.x, y: n.y + 10, width: 3, height: n.height - 20, rx: 1.5, class: 'node-accent' }));
+        g.appendChild(svgEl('circle', { cx: n.x + n.width - 13, cy: n.y + 14, r: 3, class: 'node-dot' }));
 
-        const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        title.setAttribute('x', n.x + n.width / 2);
-        title.setAttribute('y', n.y + 20);
-        title.setAttribute('class', 'node-title-text');
+        const title = svgEl('text', { x: n.x + 14, y: n.y + 22, class: 'node-title-text' });
         title.textContent = n.label;
         g.appendChild(title);
 
-        const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        sub.setAttribute('x', n.x + n.width / 2);
-        sub.setAttribute('y', n.y + 34);
-        sub.setAttribute('class', 'node-sub-text');
+        const sub = svgEl('text', { x: n.x + 14, y: n.y + 38, class: 'node-sub-text' });
         sub.textContent = n.framework.split('/')[0].trim();
         g.appendChild(sub);
 
         nodesG.appendChild(g);
+      });
+
+      // 4. Forbidden paths: a red badge on the restricted node's corner
+      // (reason in the tooltip) instead of a long line across the canvas.
+      const perNode = new Map();
+      cfg.forbidden_edges.forEach(fe => {
+        const a = nodeMap.get(fe.from);
+        if (!a) return;
+        const idx = perNode.get(fe.from) || 0;
+        perNode.set(fe.from, idx + 1);
+        const cx = a.x + a.width - 2 - idx * 18;
+        const cy = a.y - 2;
+        const marker = svgEl('g', { class: 'forbidden-marker', 'data-from': fe.from, 'data-to': fe.to });
+        marker.appendChild(svgEl('rect', { x: cx - 7, y: cy - 7, width: 14, height: 14, rx: 4, class: 'forbidden-x-box' }));
+        const t = svgEl('text', { x: cx, y: cy + 0.5, class: 'forbidden-x-text' });
+        t.textContent = '✕';
+        marker.appendChild(t);
+        const tip = svgEl('title');
+        tip.textContent = `Forbidden: ${fe.label}`;
+        marker.appendChild(tip);
+        nodesG.appendChild(marker);
       });
     }
 
@@ -1216,6 +1707,12 @@
         const alertEl = document.getElementById('strip-alert');
 
         if (p99El) p99El.textContent = `${data.payment_p99_ms || 0.0} ms`;
+
+        // Observed symptom only (payment's own p99 from Prometheus, same
+        // 500ms threshold as the HighP99Latency rule): the map shows where
+        // users are hurting, never where the injected fault actually is.
+        const paymentNode = document.getElementById('node-payment');
+        if (paymentNode) paymentNode.classList.toggle('node-error', (data.payment_p99_ms || 0) > 500);
         if (poolEl) poolEl.textContent = `${data.pool_in_use || 0} / ${data.pool_capacity || 5}`;
 
         if (alertEl) {
@@ -1260,11 +1757,44 @@
     }
 
     // ── SSE Live Event Stream (PostgreSQL backed) ──
-    function connectLiveEventStream() {
+    async function connectLiveEventStream() {
       if (isReplayMode) return;
       if (liveEventSource) liveEventSource.close();
 
-      liveEventSource = new EventSource('/events/stream');
+      // Catch up on history FIRST, quietly: populate the ledger/log/table
+      // with everything that already happened, but without firing the
+      // node-pulse / edge-flow animations for each one. Without this split,
+      // every page load replays the full event history through the same
+      // path as live events, so dozens of pulses and glows all fire at
+      // once on connect — it looks like the whole map is flashing/zooming.
+      let lastId = 0;
+      try {
+        // /events/stream?once=true returns at most 50 events per call, so
+        // loop until a call comes back empty to catch up on the full
+        // history regardless of how many events there are.
+        while (true) {
+          const resp = await fetch(`/events/stream?once=true&after_id=${lastId}`);
+          const text = await resp.text();
+          let gotAny = false;
+          for (const block of text.split('\n\n')) {
+            const dataLine = block.split('\n').find(l => l.startsWith('data:'));
+            if (!dataLine) continue;
+            try {
+              const ev = JSON.parse(dataLine.slice(5).trim());
+              if (typeof ev.id === 'number') lastId = Math.max(lastId, ev.id);
+              handleIncomingEvent(ev, /* silent */ true);
+              gotAny = true;
+            } catch (err) {}
+          }
+          if (!gotAny) break;
+        }
+      } catch (err) {
+        // Non-fatal: live stream below still works even if catch-up fails.
+      }
+
+      // Now open the live tail from exactly where catch-up left off, with
+      // full animations for anything genuinely new.
+      liveEventSource = new EventSource(`/events/stream?after_id=${lastId}`);
 
       liveEventSource.onmessage = (e) => {
         try {
@@ -1279,11 +1809,14 @@
     }
 
     // ── Event Handling & UI Reaction ──
-    function handleIncomingEvent(ev) {
+    function handleIncomingEvent(ev, silent = false) {
       eventLedger.push(ev);
 
       // Track active incident
-      if (ev.incident_id && ev.incident_id !== currentIncidentId) {
+      // Operator actions (Inject/Reset) are logged with incident_id
+      // "operator"; only real investigations ("inc-…") are incidents.
+      const isRealIncident = typeof ev.incident_id === 'string' && ev.incident_id.startsWith('inc-');
+      if (isRealIncident && ev.incident_id !== currentIncidentId) {
         currentIncidentId = ev.incident_id;
         firingStartTime = null;
         const incEl = document.getElementById('strip-incident');
@@ -1294,16 +1827,24 @@
         document.getElementById('iteration-container').classList.add('active');
         const narEl = document.getElementById('phase-narration');
         if (narEl) narEl.dataset.hasActiveIncident = 'true';
+        // Layout shifts from the quiet "at rest" hero view into full
+        // diagram + live detail mode only once there's actually something
+        // to look at.
+        if (!silent) {
+          document.body.classList.add('incident-active');
+          playDetectionChain();
+        }
       }
 
-      // 1. Highlight emitting node on architecture map
-      highlightNode(ev.component);
+      // 1. Highlight emitting node on architecture map (skipped during
+      // silent history catch-up, so old events don't animate on page load)
+      if (!silent) highlightNode(ev.component);
 
       // 2. Update 1-line Phase Narration
       updatePhaseNarration(ev);
 
       // 3. Append to Compact Event Log
-      appendLogEntry(ev);
+      appendLogEntry(ev, silent);
 
       // 4. Update Diagnostician Iteration Table if iteration event
       handleIterationEvent(ev);
@@ -1314,21 +1855,87 @@
       }
     }
 
-    function highlightNode(compName) {
-      if (!archConfig || !compName) return;
+    // Shows/hides every edge and forbidden-path line touching nodeId.
+    // Edges are opacity:0 by default (see CSS) so the architecture map
+    // reads as a clean diagram of boxes-in-zones at rest; hovering a node
+    // is how you ask "what does this talk to" instead of showing all 21
+    // lines criss-crossing the canvas permanently.
+    function setNodeEdgesVisible(nodeId, visible) {
+      document.querySelectorAll(`[data-from="${nodeId}"], [data-to="${nodeId}"]`).forEach(el => {
+        el.classList.toggle('edge-visible', visible);
+      });
+    }
 
-      // Match node ID or node label
-      const lower = compName.toLowerCase();
-      const node = archConfig.nodes.find(n => n.id.toLowerCase() === lower || n.label.toLowerCase() === lower || lower.includes(n.id.toLowerCase()));
+    // Event `component` values don't always equal a node id (the API logs
+    // as "api", the report step as "report", operator actions as
+    // "controller"/"operator"); without this map those events never lit
+    // anything up on the map.
+    const COMPONENT_ALIASES = {
+      api: 'surveyops_api', surveyops_api: 'surveyops_api', report: 'surveyops_api',
+      diagnostician: 'diagnostician', runner: 'runner', remediator: 'remediator',
+      surface_mapper: 'surface_mapper', mapper: 'surface_mapper',
+      controller: 'controller', operator: 'controller', ui: 'demo_ui', demo_ui: 'demo_ui',
+      alertmanager: 'alertmanager', prometheus: 'prometheus',
+    };
+
+    function resolveNode(compName) {
+      if (!archConfig || !compName) return null;
+      const lower = String(compName).toLowerCase();
+      const aliased = COMPONENT_ALIASES[lower];
+      return archConfig.nodes.find(n => n.id === aliased)
+        || archConfig.nodes.find(n => n.id.toLowerCase() === lower || n.label.toLowerCase() === lower)
+        || archConfig.nodes.find(n => lower.includes(n.id.toLowerCase()))
+        || null;
+    }
+
+    // Restartable timed class: re-flashing the same element before its
+    // previous timer ends extends the effect instead of cutting it short.
+    const flashTimers = new WeakMap();
+    function flash(el, cls, ms) {
+      if (!el) return;
+      clearTimeout(flashTimers.get(el));
+      el.classList.remove(cls);
+      void el.getBoundingClientRect();
+      el.classList.add(cls);
+      flashTimers.set(el, setTimeout(() => el.classList.remove(cls), ms));
+    }
+
+    function edgeBetween(aId, bId) {
+      const e = archConfig.edges.find(x => (x.from === aId && x.to === bId) || (x.from === bId && x.to === aId));
+      return e ? document.getElementById(`edge-${e.id}`) : null;
+    }
+
+    let lastFlowNodeId = null;
+
+    function highlightNode(compName) {
+      const node = resolveNode(compName);
       if (!node) return;
 
-      const el = document.getElementById(`node-${node.id}`);
-      if (el) {
-        el.classList.add('node-active');
-        setTimeout(() => {
-          el.classList.remove('node-active');
-        }, 2500);
+      flash(document.getElementById(`node-${node.id}`), 'node-active', 2500);
+
+      // Prefer lighting the actual hop the signal just took (previous
+      // active component -> this one), so the map shows the flow moving
+      // along a path; fall back to all of this node's connectors.
+      const prev = lastFlowNodeId;
+      lastFlowNodeId = node.id;
+      const hop = prev && prev !== node.id ? edgeBetween(prev, node.id) : null;
+      if (hop) {
+        flash(hop, 'edge-active', 2200);
+        return;
       }
+      archConfig.edges.forEach(e => {
+        if (e.from === node.id || e.to === node.id) {
+          flash(document.getElementById(`edge-${e.id}`), 'edge-active', 1600);
+        }
+      });
+    }
+
+    // Plays detection -> alert -> webhook hop by hop when an incident
+    // opens, so the start of an investigation is visible on the map.
+    function playDetectionChain() {
+      const chain = ['payment', 'prometheus', 'alertmanager', 'surveyops_api', 'diagnostician'];
+      lastFlowNodeId = null;
+      chain.forEach((id, i) => setTimeout(() => highlightNode(id), i * 450));
     }
 
     function updatePhaseNarration(ev) {
@@ -1365,7 +1972,30 @@
       el.textContent = narration;
     }
 
-    function appendLogEntry(ev) {
+    // Icon + label event rows, in the spirit of a product event timeline:
+    // a small glyph signals the kind of thing that happened before you
+    // even read the text, same as a status dashboard's event feed.
+    function logIconFor(ev) {
+      const comp = (ev.component || '').toLowerCase();
+      const type = (ev.event_type || '').toLowerCase();
+      if (type.includes('error') || type.includes('fail')) return { glyph: '✕', cls: 'icon-error' };
+      if (type.includes('completed') || type.includes('root_cause')) return { glyph: '✓', cls: 'icon-success' };
+      if (type.includes('alert') || comp.includes('alertmanager')) return { glyph: '▲', cls: 'icon-warn' };
+      if (comp.includes('report')) return { glyph: '▦', cls: 'icon-muted' };
+      if (comp.includes('runner')) return { glyph: '▸', cls: 'icon-software' };
+      if (comp.includes('diagnostician') || comp.includes('mapper') || comp.includes('remediator')) return { glyph: '◆', cls: 'icon-agent' };
+      return { glyph: '•', cls: 'icon-muted' };
+    }
+
+    // Wraps bare key=value / path-like tokens in the summary as small
+    // monospace chips, the same inline-code treatment Render uses for
+    // file paths and shell commands inside its event list.
+    function chipifyInlineCode(text) {
+      const escaped = escapeHtml(text);
+      return escaped.replace(/(\/[\w./-]{3,}|[\w_]+=[\w.%-]+)/g, '<code class="inline-chip">$1</code>');
+    }
+
+    function appendLogEntry(ev, silent = false) {
       const stream = document.getElementById('log-stream');
       const countEl = document.getElementById('log-count');
       if (!stream) return;
@@ -1374,13 +2004,15 @@
       const comp = ev.component || 'system';
       const isAgent = comp.includes('mapper') || comp.includes('diagnostician') || comp.includes('runner') || comp.includes('remediator');
       const summary = extractEventSummary(ev);
+      const icon = logIconFor(ev);
 
       const entry = document.createElement('div');
-      entry.className = 'log-entry';
+      entry.className = silent ? 'log-entry no-anim' : 'log-entry';
       entry.innerHTML = `
+        <span class="log-icon ${icon.cls}">${icon.glyph}</span>
         <span class="log-ts">${ts}</span>
         <span class="log-comp ${isAgent ? 'agent' : ''}">[${escapeHtml(comp)}]</span>
-        <span class="log-text">${escapeHtml(summary)}</span>
+        <span class="log-text">${chipifyInlineCode(summary)}</span>
       `;
       stream.appendChild(entry);
       stream.scrollTop = stream.scrollHeight;
@@ -1478,6 +2110,7 @@
         }
         document.getElementById('iteration-container').classList.remove('active');
         document.getElementById('iteration-tbody').innerHTML = '';
+        document.body.classList.remove('incident-active');
         showInlineStatus('System reset complete. Toxics cleared and tables truncated.');
       } catch (err) {
         showInlineStatus('Reset Error: ' + err.message, true);

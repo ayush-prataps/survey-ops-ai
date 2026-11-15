@@ -1,3 +1,5 @@
+version: "3.8"
+
 networks:
   target_net:
     driver: bridge
@@ -7,12 +9,15 @@ networks:
     driver: bridge
   controller_net:
     driver: bridge
+  observability_net:
+    driver: bridge
 
 volumes:
   target_postgres_data:
   surveyops_postgres_data:
   grafana_data:
   remediator_workspace:
+  langfuse_postgres_data:
 
 services:
   postgres:
@@ -49,7 +54,7 @@ services:
       - ./toxiproxy/toxiproxy-config.json:/etc/toxiproxy/toxiproxy-config.json:ro
     ports:
       - "127.0.0.1:8474:8474"   # Toxiproxy management API (bound to loopback only; never exposed publicly)
-      - "127.0.0.1:5433:5433"   # payment-postgres proxy port (bound to loopback)
+      - "127.0.0.1:15433:5433"   # payment-postgres proxy port (bound to loopback; host side remapped, container still listens on 5433)
     networks:
       - data_net
     depends_on:
@@ -258,6 +263,9 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       DIAGNOSTICIAN_MODEL: ${DIAGNOSTICIAN_MODEL:-deepseek/deepseek-flash}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-surveyops-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-surveyops-local}
     volumes:
       - ../surveyops:/app/surveyops
     ports:
@@ -266,6 +274,7 @@ services:
       - target_net
       - ops_net
       - controller_net
+      - observability_net
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
       interval: 5s
@@ -309,6 +318,9 @@ services:
       MAX_LOAD_BURST_SECONDS: ${MAX_LOAD_BURST_SECONDS:-10}
       SURVEYOPS_POSTGRES_HOST: surveyops-postgres
       SURVEYOPS_POSTGRES_PORT: "5432"
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-surveyops-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-surveyops-local}
     volumes:
       - ../surveyops:/app/surveyops
     ports:
@@ -316,6 +328,7 @@ services:
     networks:
       - target_net
       - ops_net
+      - observability_net
     depends_on:
       - prometheus
       - orders
@@ -378,6 +391,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: target_app
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-surveyops-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-surveyops-local}
     volumes:
       - ../surveyops:/app/surveyops
       - remediator_workspace:/workspace
@@ -386,6 +402,7 @@ services:
     networks:
       - target_net
       - ops_net
+      - observability_net
     depends_on:
       surveyops-postgres:
         condition: service_healthy
@@ -465,3 +482,62 @@ services:
       retries: 3
 
 
+
+
+  # ── Langfuse (self-hosted LLM observability, requirement 9) ───────────────
+  # Using Langfuse v2 (Postgres-only self-host): v3's ClickHouse/Redis/MinIO
+  # stack needs the minio/minio image, which Docker Hub no longer serves
+  # anonymously. v2 covers everything requirement 9 needs here (OTel trace
+  # ingestion, token/cost tracking, trace UI) with one extra container.
+  # ISOLATION: observability_net only. Agents (surveyops-api, runner, remediator)
+  # join observability_net solely to export OTel traces here; Langfuse cannot
+  # reach target_net, data_net, ops_net, or controller_net.
+  langfuse-postgres:
+    image: postgres:16-alpine
+    container_name: langfuse_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    networks:
+      - observability_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: langfuse_web
+    restart: unless-stopped
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-dev-salt-change-me}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-dev-nextauth-secret}
+      NEXTAUTH_URL: http://localhost:3001
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_INIT_ORG_ID: surveyops-org
+      LANGFUSE_INIT_ORG_NAME: SurveyOps
+      LANGFUSE_INIT_PROJECT_ID: surveyops-project
+      LANGFUSE_INIT_PROJECT_NAME: SurveyOps
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-surveyops-local}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-surveyops-local}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@surveyops.local}
+      LANGFUSE_INIT_USER_NAME: admin
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-change-me-12345}
+    networks:
+      - observability_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O - http://localhost:3000/api/public/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
