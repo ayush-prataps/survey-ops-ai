@@ -110,15 +110,9 @@ async def events_stream(
             if events:
                 for ev in events:
                     last_seen_id = max(last_seen_id, ev["id"])
-                    data_str = json.dumps(ev, default=str)
-                    # No custom "event:" field: the frontend's EventSource only
-                    # has an `onmessage` handler, which the SSE spec fires
-                    # only for unnamed (default "message") events. A custom
-                    # event name here means the browser silently drops every
-                    # event and onmessage never fires. event_type already
-                    # travels inside the JSON payload, which is what the
-                    # frontend actually reads to dispatch on.
-                    yield f"id: {ev['id']}\ndata: {data_str}\n\n"
+                    data_str = json.dumps(ev)
+                    event_type = ev.get("event_type", "message")
+                    yield f"id: {ev['id']}\nevent: {event_type}\ndata: {data_str}\n\n"
 
             if once:
                 break
@@ -401,13 +395,9 @@ async def stream_replay(name: str, request: Request, fast: bool = Query(default=
             replay_ev["is_replay"] = True
             replay_ev["replay_label"] = "REPLAY"
 
-            data_str = json.dumps(replay_ev, default=str)
-            # No custom "event:" field here either (see /events/stream for
-            # why); the frontend's replay listener is also a plain
-            # onmessage. "replay_completed" below is a deliberate exception:
-            # the frontend explicitly addEventListener('replay_completed', ...)
-            # for that one.
-            yield f"id: {replay_ev.get('id', idx + 1)}\ndata: {data_str}\n\n"
+            data_str = json.dumps(replay_ev)
+            event_type = replay_ev.get("event_type", "message")
+            yield f"id: {replay_ev.get('id', idx + 1)}\nevent: {event_type}\ndata: {data_str}\n\n"
 
         yield "event: replay_completed\ndata: {\"status\": \"completed\"}\n\n"
 

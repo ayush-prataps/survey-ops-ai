@@ -76,14 +76,6 @@ from .schemas import (
 logger = logging.getLogger("surveyops.diagnostician")
 
 
-def _provider_http_options(model: str):
-    """DeepSeek-only: disable its reasoning mode. Other providers (e.g.
-    Gemini) reject the unknown "thinking" field, so send nothing extra."""
-    if "deepseek" in str(model).lower():
-        return genai_types.HttpOptions(extra_body={"thinking": {"type": "disabled"}})
-    return None
-
-
 def get_diagnostician_model() -> str:
     """Resolves model from DIAGNOSTICIAN_MODEL env var without hardcoded defaults."""
     model = os.getenv("DIAGNOSTICIAN_MODEL")
@@ -889,7 +881,9 @@ def build_diagnostician_loop_agent(
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=4096,
-            http_options=_provider_http_options(resolved_model),
+            http_options=genai_types.HttpOptions(
+                extra_body={"thinking": {"type": "disabled"}},
+            ),
         ),
         retry_config=retry_cfg,
         before_agent_callback=diagnostician_before_agent_callback,
@@ -924,7 +918,9 @@ def build_diagnostician_loop_agent(
         generate_content_config=genai_types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=4096,
-            http_options=_provider_http_options(resolved_model),
+            http_options=genai_types.HttpOptions(
+                extra_body={"thinking": {"type": "disabled"}},
+            ),
         ),
         retry_config=retry_cfg,
         before_agent_callback=diagnostician_before_agent_callback,

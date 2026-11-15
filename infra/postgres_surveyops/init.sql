@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS propositions (
     justification TEXT NOT NULL,
     predicted_signal TEXT NOT NULL,
     graph_edge_ref VARCHAR(255) NOT NULL,
+    checkable_signal JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
