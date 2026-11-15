@@ -127,13 +127,22 @@ $SUDO docker compose -f infra/docker-compose.yml up -d --build
 
 # 8. Wait for core services to report healthy
 log_info "Waiting for service health checks to pass..."
-SERVICES=("postgres" "auth" "inventory" "payment" "orders" "surveyops-postgres" "surveyops-api" "demo-ui")
+CONTAINERS=(
+    "target_postgres"
+    "target_auth"
+    "target_inventory"
+    "target_payment"
+    "target_orders"
+    "surveyops_postgres"
+    "surveyops_api"
+    "surveyops_demo_ui"
+)
 
-for SVC in "${SERVICES[@]}"; do
-    printf "Checking %-20s ... " "$SVC"
+for CNAME in "${CONTAINERS[@]}"; do
+    printf "Checking %-22s ... " "$CNAME"
     ATTEMPTS=0
     MAX_ATTEMPTS=24 # 24 x 5s = 120s max
-    until [ "$($SUDO docker inspect --format='{{json .State.Health.Status}}' "target_${SVC}" 2>/dev/null || $SUDO docker inspect --format='{{json .State.Health.Status}}' "surveyops_${SVC//-/_}" 2>/dev/null)" = '"healthy"' ] || [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
+    until [ "$($SUDO docker inspect --format='{{json .State.Health.Status}}' "$CNAME" 2>/dev/null)" = '"healthy"' ] || [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
         sleep 5
         ATTEMPTS=$((ATTEMPTS+1))
     done
@@ -141,7 +150,7 @@ for SVC in "${SERVICES[@]}"; do
     if [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; then
         echo -e "${GREEN}HEALTHY${NC}"
     else
-        echo -e "${YELLOW}STARTED (healthcheck pending or not configured)${NC}"
+        echo -e "${YELLOW}STARTED${NC}"
     fi
 done
 
