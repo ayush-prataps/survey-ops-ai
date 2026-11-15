@@ -18,6 +18,10 @@ import uuid
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
+from surveyops.observability import init_observability
+
+init_observability("surveyops-api")
+
 # ── Structured logging ──────────────────────────────────────────────────────
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
