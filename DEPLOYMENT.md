@@ -180,7 +180,46 @@ http://<EXTERNAL_IP>:8050
 
 ---
 
-## 7. Cost & Resource Management
+## 7. Continuous Deployment (Auto-Deploy on Git Push)
+
+To have the VM automatically redeploy whenever you or your teammates push to `main`:
+
+### 1. Open Port 9000 on GCP Firewall:
+Run in Cloud Shell:
+```bash
+gcloud compute firewall-rules create allow-surveyops-webhook \
+    --direction=INGRESS \
+    --action=ALLOW \
+    --rules=tcp:9000 \
+    --target-tags=surveyops-host \
+    --description="Allow GitHub webhook on port 9000"
+```
+
+### 2. Enable the Webhook Service on the VM:
+SSH into the VM and run:
+```bash
+cd ~/survey-ops-ai
+bash scripts/setup_webhook.sh
+```
+The script will display your **Payload URL** (`http://<VM_IP>:9000`) and a secure **Secret**.
+
+### 3. Add the Webhook to GitHub:
+1. Open your repository on GitHub: `https://github.com/ayush-prataps/survey-ops-ai`
+2. Go to **Settings** > **Webhooks** > **Add webhook**
+3. **Payload URL**: `http://<VM_IP>:9000`
+4. **Content type**: `application/json`
+5. **Secret**: *(paste the secret displayed by `setup_webhook.sh`)*
+6. **Which events**: Select **Just the push event**
+7. Click **Add webhook**.
+
+Now, whenever anyone pushes to `main`, GitHub pings the VM and the webhook service automatically runs:
+`git pull origin main && docker compose -f infra/docker-compose.yml up -d --build`
+
+Deployment logs are streamed to `~/survey-ops-ai/deploy.log` and `journalctl -u surveyops-webhook -f`.
+
+---
+
+## 8. Cost & Resource Management
 
 When you are done with a demo session:
 
