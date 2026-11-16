@@ -52,17 +52,15 @@ def build_remediator_agent(
     api_key: Optional[str] = None,
     tools: Optional[list] = None,
 ) -> Agent:
-    """Builds the CrewAI Remediator agent using REMEDIATOR_MODEL env var."""
-    model_name = model or os.getenv("REMEDIATOR_MODEL", "deepseek/deepseek-flash")
-    if not model_name:
-        raise ValueError("REMEDIATOR_MODEL environment variable is not configured")
+    """Builds the CrewAI Remediator agent using REMEDIATOR_MODEL env var, defaulting to DeepSeek Flash."""
+    model_name = model or os.getenv("REMEDIATOR_MODEL")
+    if not model_name or "gemini" in model_name.lower():
+        model_name = "deepseek/deepseek-flash"
 
-    if "deepseek" in model_name.lower():
-        key = api_key or os.getenv("DEEPSEEK_API_KEY")
-    else:
-        key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    key = api_key or os.getenv("DEEPSEEK_API_KEY")
+    extra_body = {"thinking": {"type": "disabled"}} if "deepseek" in model_name.lower() else None
 
-    llm = LLM(model=model_name, api_key=key, temperature=0.1)
+    llm = LLM(model=model_name, api_key=key, temperature=0.1, extra_body=extra_body)
 
     agent_kwargs: dict[str, Any] = {
         "role": "Principal Site Reliability and Systems Remediator",

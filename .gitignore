@@ -9,3 +9,5 @@ workspace/
 .DS_Store
 # Generated ground-truth records from fault injection (scored after run, never committed)
 eval/ground_truth/*.json
+eval/reports/inc-*.json
+eval/reports/inc-*.md

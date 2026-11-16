@@ -85,10 +85,10 @@ def _provider_http_options(model: str):
 
 
 def get_diagnostician_model() -> str:
-    """Resolves model from DIAGNOSTICIAN_MODEL env var without hardcoded defaults."""
+    """Resolves model from DIAGNOSTICIAN_MODEL env var, defaulting to deepseek/deepseek-flash."""
     model = os.getenv("DIAGNOSTICIAN_MODEL")
-    if not model:
-        raise ValueError("DIAGNOSTICIAN_MODEL environment variable must be set (e.g. 'gemini-3.8-flash')")
+    if not model or "gemini" in model.lower():
+        return "deepseek/deepseek-flash"
     return model
 
 

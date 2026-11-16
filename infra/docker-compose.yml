@@ -261,7 +261,6 @@ services:
       SURVEYOPS_POSTGRES_HOST: surveyops-postgres
       SURVEYOPS_POSTGRES_PORT: "5432"
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
       DIAGNOSTICIAN_MODEL: ${DIAGNOSTICIAN_MODEL:-deepseek/deepseek-flash}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-surveyops-local}
@@ -378,7 +377,6 @@ services:
       TARGET_REPO_URL: ${TARGET_REPO_URL:-https://github.com/ayush-prataps/surveyops-target-app.git}
       REMEDIATOR_MODEL: ${REMEDIATOR_MODEL:-deepseek/deepseek-flash}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
       INVESTIGATE_SHARED_SECRET: ${INVESTIGATE_SHARED_SECRET:-dev-secret}
       SURVEYOPS_POSTGRES_HOST: surveyops-postgres
       SURVEYOPS_POSTGRES_PORT: "5432"

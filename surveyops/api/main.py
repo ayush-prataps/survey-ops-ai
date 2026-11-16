@@ -342,12 +342,45 @@ def post_trial_reset(
     except Exception as exc:
         logger.warning(f"Could not truncate events table in surveyops_postgres: {exc}")
 
+    global _operator_inject_armed
+    _operator_inject_armed = False
     logger.info(f"Trial reset completed on surveyops-api (open_incidents_cleared={open_count})")
     return {
         "status": "reset",
         "open_incidents_cleared": open_count,
         "events_truncated": events_cleared,
+        "armed": False,
     }
+
+
+_operator_inject_armed: bool = False
+REQUIRE_OPERATOR_INJECTION: bool = os.environ.get("REQUIRE_OPERATOR_INJECTION", "true").lower() in ("true", "1")
+
+
+@app.post("/trial/arm")
+def post_trial_arm(
+    x_shared_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Arms the API so the incoming Alertmanager alert will trigger Diagnostician."""
+    global _operator_inject_armed
+    _verify_auth(x_shared_secret, authorization)
+    _operator_inject_armed = True
+    logger.info("Operator triggered Inject: Diagnostician investigation is ARMED for incoming alerts.")
+    return {"status": "armed", "message": "Investigation enabled for operator fault injection"}
+
+
+@app.post("/trial/disarm")
+def post_trial_disarm(
+    x_shared_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    """Disarms the API so background Diagnostician will not run on Alertmanager alerts."""
+    global _operator_inject_armed
+    _verify_auth(x_shared_secret, authorization)
+    _operator_inject_armed = False
+    logger.info("Diagnostician investigation is DISARMED.")
+    return {"status": "disarmed"}
 
 
 ENABLE_BACKGROUND_DIAGNOSTICIAN = os.environ.get("ENABLE_BACKGROUND_DIAGNOSTICIAN", "false").lower() in ("true", "1")
@@ -434,6 +467,8 @@ async def _run_diagnostician_background(incident_id: str, payload: InvestigatePa
         except Exception:
             pass
     finally:
+        global _operator_inject_armed
+        _operator_inject_armed = False
         closed = dedup_store.close_incident_by_id(incident_id)
         logger.info(
             "Closed incident in finally block",
@@ -562,11 +597,17 @@ async def investigate(
 
         # Trigger background Diagnostician run (Requirement 9)
         if ENABLE_BACKGROUND_DIAGNOSTICIAN:
-            try:
-                asyncio.create_task(_run_diagnostician_background(incident_id, validated))
-            except Exception as task_exc:
-                logger.error(f"Failed to dispatch background task for {incident_id}: {task_exc}")
-                dedup_store.close_incident_by_id(incident_id)
+            if REQUIRE_OPERATOR_INJECTION and not _operator_inject_armed:
+                logger.info(
+                    "Skipping background Diagnostician: Operator has not clicked Inject button. Disarmed to conserve LLM tokens.",
+                    extra={"extra_fields": {"incident_id": incident_id, "endpoint": validated.endpoint}},
+                )
+            else:
+                try:
+                    asyncio.create_task(_run_diagnostician_background(incident_id, validated))
+                except Exception as task_exc:
+                    logger.error(f"Failed to dispatch background task for {incident_id}: {task_exc}")
+                    dedup_store.close_incident_by_id(incident_id)
 
     return {
         "accepted": len(accepted),

@@ -146,14 +146,25 @@ def apply_patch(
         return PatchResult(success=False, file_path=file_path, error=f"File not found: {file_path}")
 
     content = target.read_text(encoding="utf-8")
-    if original_snippet not in content:
+    content_norm = content.replace("\r\n", "\n")
+    orig_norm = original_snippet.replace("\r\n", "\n")
+    repl_norm = replacement_snippet.replace("\r\n", "\n")
+
+    matched_orig = None
+    if orig_norm in content_norm:
+        matched_orig = orig_norm
+    elif orig_norm.strip() and orig_norm.strip() in content_norm:
+        matched_orig = orig_norm.strip()
+        repl_norm = repl_norm.strip()
+
+    if not matched_orig:
         return PatchResult(
             success=False,
             file_path=file_path,
             error=f"Original snippet not found in {file_path}",
         )
 
-    patched_content = content.replace(original_snippet, replacement_snippet, 1)
+    patched_content = content_norm.replace(matched_orig, repl_norm, 1)
 
     # Validate Python syntax
     try:

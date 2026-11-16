@@ -206,6 +206,15 @@ async def demo_inject(req: DemoInjectRequest) -> dict[str, Any]:
     for base_url in target_urls:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # Also arm surveyops-api directly
+                api_targets = ["http://surveyops-api:8000", "http://localhost:8000", "http://127.0.0.1:8000"]
+                for api_u in api_targets:
+                    try:
+                        await client.post(f"{api_u}/trial/arm", headers={"X-Shared-Secret": SHARED_SECRET})
+                        break
+                    except Exception:
+                        continue
+
                 resp = await client.post(
                     f"{base_url}/inject",
                     json=req.model_dump(),

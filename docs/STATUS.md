@@ -1,8 +1,14 @@
 # Status
 
-Last updated: 2026-10-19
+Last updated: 2026-11-16
 
 ## Done
+- Full migration to DeepSeek Flash (`deepseek/deepseek-flash`) across Google ADK Diagnostician and CrewAI Remediator & Surface Mapper, with thinking mode disabled for fast, non-reasoning token efficiency.
+- Resolved Google Gemini Free Tier 429 quota exhaustion and 503 high-demand rate limit blocks.
+- Implemented operator injection gating (`REQUIRE_OPERATOR_INJECTION=true`) with `/trial/arm` and `/trial/disarm` to guarantee zero token consumption on page open, idle, or container startup.
+- Enhanced Remediator patch application with whitespace and line-ending normalization, preventing false snippet rejections.
+- Verified end-to-end multi-agent execution with live fault injection: ADK Diagnostician diagnosed connection pool exhaustion, handed off over A2A to CrewAI Remediator, which opened GitHub PR #28, verified by double-blind scorer (`is_correct: True`).
+- All 180 unit and integration tests passing.
 - Synopsis drafted (needs alignment with DECISIONS.md, do not keep rewriting it)
 - Architecture, workflow, requirements mapping documented
 - Repo structure and ground-truth docs created

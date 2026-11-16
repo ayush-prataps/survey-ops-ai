@@ -39,14 +39,13 @@ def build_surface_mapper_agent(
     api_key: Optional[str] = None,
     callbacks: Optional[SurfaceMapperCallbackHandler] = None,
 ) -> Agent:
-    model_name = model or os.getenv("MAPPER_MODEL")
-    if not model_name:
-        raise ValueError("MAPPER_MODEL environment variable is not configured")
-    if "deepseek" in model_name.lower():
-        key = api_key or os.getenv("DEEPSEEK_API_KEY")
-    else:
-        key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    llm = LLM(model=model_name, api_key=key, temperature=0.1)
+    model_name = model or os.getenv("MAPPER_MODEL", "deepseek/deepseek-flash")
+    if not model_name or "gemini" in model_name.lower():
+        model_name = "deepseek/deepseek-flash"
+
+    key = api_key or os.getenv("DEEPSEEK_API_KEY")
+    extra_body = {"thinking": {"type": "disabled"}} if "deepseek" in model_name.lower() else None
+    llm = LLM(model=model_name, api_key=key, temperature=0.1, extra_body=extra_body)
 
     return Agent(
         role="Distributed Systems Reliability Architect",
@@ -223,9 +222,7 @@ def run_surface_mapper(
     """
     from surveyops.llm_utils import execute_with_json_retry
 
-    model_name = model or os.getenv("MAPPER_MODEL")
-    if not model_name:
-        raise ValueError("MAPPER_MODEL environment variable is not configured")
+    model_name = model or os.getenv("MAPPER_MODEL", "deepseek/deepseek-flash")
     app_dir = resolve_target_app_dir(target_app_dir)
     graph = build_target_app_graph(app_dir)
     spec = parse_system_specs(app_dir)

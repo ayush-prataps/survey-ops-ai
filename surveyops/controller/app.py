@@ -36,6 +36,16 @@ logger.setLevel(logging.INFO)
 
 app = FastAPI(title="SurveyOps Controller", version="0.1.0")
 
+
+@app.on_event("startup")
+def startup_clean():
+    """Ensure toxics are cleared on boot so system starts completely clean."""
+    try:
+        _toxi_request("DELETE", f"/proxies/{PROXY_NAME}/toxics/{TOXIC_NAME}", ignore_404=True)
+        logger.info("Controller startup: cleared any dangling toxics.")
+    except Exception:
+        pass
+
 SHARED_SECRET = os.environ.get("CONTROLLER_SHARED_SECRET", os.environ.get("INVESTIGATE_SHARED_SECRET", "dev-secret"))
 TOXI_API = os.environ.get("TOXIPROXY_API", "http://toxiproxy:8474")
 PROXY_NAME = "payment-postgres"
@@ -123,7 +133,16 @@ async def post_inject(
     toxic_res = _toxi_request("POST", f"/proxies/{PROXY_NAME}/toxics", body)
     logger.info(f"Injected toxic on '{PROXY_NAME}': {req.latency_ms}ms latency (+/- {req.jitter_ms}ms)")
 
-    # 3. Optional: generate payment traffic to trigger pool saturation
+    # 3. Arm surveyops-api for the coming alert
+    try:
+        headers = {"X-Shared-Secret": SHARED_SECRET}
+        with httpx.Client(timeout=4.0) as client:
+            client.post(f"{SURVEYOPS_API_URL}/trial/arm", headers=headers)
+            logger.info("Armed surveyops-api for upcoming operator-injected incident.")
+    except Exception as arm_exc:
+        logger.warning(f"Could not reach surveyops-api to arm: {arm_exc}")
+
+    # 4. Optional: generate payment traffic to trigger pool saturation
     if req.trigger_traffic:
         asyncio.create_task(_send_payment_traffic(req.traffic_count))
 

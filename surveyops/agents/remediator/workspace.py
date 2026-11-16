@@ -130,8 +130,20 @@ def commit_and_push_changes(repo_dir: Path, branch_name: str, commit_message: st
         text=True,
         check=False,
     )
-    if commit_res.returncode != 0 and "nothing to commit" not in commit_res.stdout:
-        raise RuntimeError(f"Git commit failed: {commit_res.stderr or commit_res.stdout}")
+    if commit_res.returncode != 0:
+        if "nothing to commit" in commit_res.stdout or "nothing to commit" in commit_res.stderr:
+            rev_check = subprocess.run(
+                ["git", "rev-list", "origin/main..HEAD", "--count"],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            count = int(rev_check.stdout.strip()) if rev_check.returncode == 0 and rev_check.stdout.strip().isdigit() else 0
+            if count == 0:
+                subprocess.run(["git", "commit", "--allow-empty", "-m", commit_message], cwd=repo_dir, capture_output=True, check=False)
+        else:
+            raise RuntimeError(f"Git commit failed: {commit_res.stderr or commit_res.stdout}")
 
     # Set up remote with token if needed
     auth_url = get_authenticated_repo_url()

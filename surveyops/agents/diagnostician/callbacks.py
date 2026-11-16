@@ -238,6 +238,10 @@ async def diagnostician_on_model_error_callback(ctx: Context, request: LlmReques
     })
 
     if is_transient:
+        if "deepseek" in str(request.model).lower():
+            logger.warning(f"[ModelRetry] Transient error for {incident_id} on {request.model}: {err_str}. Allowing ADK retry config to retry.")
+            return None
+
         api_key = os.environ.get("GEMINI_API_KEY")
         # Check for explicit retryDelay in Google GenAI error message
         match = re.search(r"retryDelay[:\s]+(\d+(?:\.\d+)?)s?", err_str)
